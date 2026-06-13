@@ -99,7 +99,6 @@ const TIMELINE_CONFIGS: Record<string, Array<{ time: string; task: string }>> = 
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isRealMcp, setIsRealMcp] = useState(false);
   
   const [dayProfile, setDayProfile] = useState('moderate');
   const [dietPreference, setDietPreference] = useState('balanced');
@@ -142,14 +141,6 @@ export default function Home() {
         const data = await res.json();
         if (data.authenticated) {
           setIsLoggedIn(true);
-          setIsRealMcp(true);
-        } else {
-          // Check if local mock mode bypass was active
-          const mockBypass = sessionStorage.getItem('swiggy_mock_bypass');
-          if (mockBypass) {
-            setIsLoggedIn(true);
-            setIsRealMcp(false);
-          }
         }
       } catch (err) {
         console.error(err);
@@ -166,7 +157,7 @@ export default function Home() {
         if (res.success && res.addresses?.length > 0) {
           setAddress(res.addresses[0]);
         } else if (res.success && res.addresses) {
-          setAddress({ name: 'Default', address: 'No address set. Configure in Swiggy app.' });
+          setAddress({ name: 'Home Address', address: 'Home, Bengaluru' });
         }
       };
       fetchAddress();
@@ -174,18 +165,10 @@ export default function Home() {
   }, [isLoggedIn]);
 
   const handleOAuthLogin = () => {
-    // Redirect to real login endpoint
     window.location.href = '/api/auth/login';
   };
 
-  const handleMockBypass = () => {
-    sessionStorage.setItem('swiggy_mock_bypass', 'true');
-    setIsLoggedIn(true);
-    setIsRealMcp(false);
-  };
-
   const handleLogout = () => {
-    sessionStorage.removeItem('swiggy_mock_bypass');
     window.location.href = '/api/auth/logout';
   };
 
@@ -258,7 +241,7 @@ export default function Home() {
   const isOverBudget = cartTotal > budget;
   const progressPercent = Math.min((cartTotal / budget) * 100, 100);
 
-  // Render Login landing screen if not authenticated
+  // Render Swiggy Login landing screen if not authenticated
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center font-sans relative px-4">
@@ -280,12 +263,9 @@ export default function Home() {
               <CardTitle className="text-xl font-bold text-zinc-100">Sign In to Swiggy</CardTitle>
               <CardDescription className="text-zinc-400 text-xs">Authorize this application to access your Swiggy Instamart cart and addresses.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Button onClick={handleOAuthLogin} className="w-full bg-orange-600 text-zinc-50 hover:bg-orange-500 font-bold py-3.5 flex items-center justify-center gap-2">
+            <CardContent>
+              <Button onClick={handleOAuthLogin} className="w-full bg-orange-600 text-zinc-50 hover:bg-orange-500 font-bold py-4 flex items-center justify-center gap-2">
                 <Key className="w-4 h-4" /> Connect Swiggy Account (OAuth)
-              </Button>
-              <Button onClick={handleMockBypass} variant="outline" className="w-full border-zinc-800 hover:bg-zinc-850 text-zinc-300 font-semibold py-3.5">
-                Continue in Mock/Sandbox Mode
               </Button>
             </CardContent>
           </Card>
@@ -307,8 +287,8 @@ export default function Home() {
         
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-full text-xs font-medium text-zinc-300">
-            <span className={`w-1.5 h-1.5 rounded-full ${isRealMcp ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-amber-500'}`} />
-            Mode: <span className="text-orange-400 font-semibold">{isRealMcp ? 'Real Swiggy API' : 'Sandbox (Offline)'}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e]" />
+            Swiggy Connected
           </div>
 
           {address && (
