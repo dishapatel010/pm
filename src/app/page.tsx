@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Clock, CheckCircle2, ShoppingCart, ArrowRight, RefreshCw, AlertTriangle, MapPin, Sparkles, Check, Key, LogOut, Info } from 'lucide-react';
+import { Clock, CheckCircle2, ShoppingCart, ArrowRight, RefreshCw, AlertTriangle, MapPin, Sparkles, Check, Key, LogOut, Send, Bot, User, CheckSquare } from 'lucide-react';
 
 interface Meal {
   name: string;
@@ -20,6 +20,28 @@ interface Plan {
   breakfast: Meal;
   lunch: Meal;
   dinner: Meal;
+}
+
+interface Message {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  planData?: {
+    dayProfile: string;
+    dietPreference: string;
+    budget: number;
+    mealPlan: Plan;
+    todoList: Array<{ time: string; task: string; completed?: boolean }>;
+    cartDetails: any;
+    activeTab: 'instamart' | 'food';
+    restaurants: any[];
+    selectedRestaurant: any;
+    foodMenu: any[];
+    foodCartDetails: any;
+    availableCoupons: any[];
+    appliedCoupon: string | null;
+    trackingDetails: any;
+  };
 }
 
 const RECIPE_INGREDIENTS: Record<string, Record<string, Plan>> = {
@@ -99,33 +121,19 @@ const TIMELINE_CONFIGS: Record<string, Array<{ time: string; task: string }>> = 
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [activeTab, setActiveTab] = useState<'instamart' | 'food'>('instamart');
-  
-  // App Configs
-  const [dayProfile, setDayProfile] = useState('moderate');
-  const [dietPreference, setDietPreference] = useState('balanced');
-  const [budget, setBudget] = useState(400);
   const [address, setAddress] = useState<any>(null);
-  const [planGenerated, setPlanGenerated] = useState(false);
-  const [mealPlan, setMealPlan] = useState<Plan | null>(null);
-  const [todoList, setTodoList] = useState<Array<{ time: string; task: string }>>([]);
+  
+  // Chat flow state
+  const [inputText, setInputText] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-
-  // Instamart Cart State
-  const [cartDetails, setCartDetails] = useState<any>(null);
-
-  // Food Delivery state
-  const [restaurants, setRestaurants] = useState<any[]>([]);
-  const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
-  const [foodMenu, setFoodMenu] = useState<any[]>([]);
-  const [foodCartDetails, setFoodCartDetails] = useState<any>(null);
-  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
-  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
-  const [trackingDetails, setTrackingDetails] = useState<any>(null);
-
+  
   // Checkout Dialog Modals
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [orderResult, setOrderResult] = useState<any>(null);
+  const [activeTabGlobal, setActiveTabGlobal] = useState<'instamart' | 'food'>('instamart');
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const callMcp = async (method: string, params: any = {}) => {
     try {
@@ -155,6 +163,14 @@ export default function Home() {
         const data = await res.json();
         if (data.authenticated) {
           setIsLoggedIn(true);
+          // Initial greeting
+          setMessages([
+            {
+              id: 'init',
+              sender: 'assistant',
+              text: "Hello! I am your Noto-inspired Tea House culinary planner, **PromptRecipe**. Tell me about your day, diet preference, and budget (e.g. 'I am busy and need vegetarian high-protein meals within ₹300'), and I'll generate a custom cooking schedule, meal plan, and Instamart cart!"
+            }
+          ]);
         }
       } catch (err) {
         console.error(err);
@@ -178,6 +194,11 @@ export default function Home() {
     }
   }, [isLoggedIn]);
 
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const handleOAuthLogin = () => {
     window.location.href = '/api/auth/login';
   };
@@ -186,19 +207,60 @@ export default function Home() {
     window.location.href = '/api/auth/logout';
   };
 
-  // Main Generator logic
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setTrackingDetails(null);
-    setAppliedCoupon(null);
-    setSelectedRestaurant(null);
+  // Parse prompt text to extract config profile variables
+  const parsePrompt = (text: string) => {
+    const lower = text.toLowerCase();
     
-    const plan = RECIPE_INGREDIENTS[dayProfile][dietPreference];
-    setMealPlan(plan);
-    setTodoList(TIMELINE_CONFIGS[dayProfile]);
+    let day = 'moderate';
+    if (lower.includes('busy') || lower.includes('quick') || lower.includes('fast') || lower.includes('short')) {
+      day = 'busy';
+    } else if (lower.includes('free') || lower.includes('weekend') || lower.includes('gourmet') || lower.includes('relax')) {
+      day = 'free';
+    }
 
-    if (activeTab === 'instamart') {
+    let diet = 'balanced';
+    if (lower.includes('protein') || lower.includes('meat') || lower.includes('chicken')) {
+      diet = 'high-protein';
+    } else if (lower.includes('veg') || lower.includes('tofu') || lower.includes('paneer')) {
+      diet = 'vegetarian';
+    }
+
+    let extractedBudget = 400;
+    const match = lower.match(/(?:₹|rs\.?|inr|budget|within|under)?\s*(\d{3,4})/);
+    if (match) {
+      extractedBudget = parseInt(match[1]);
+    }
+
+    return { day, diet, budget: extractedBudget };
+  };
+
+  // Main Prompt handler
+  const handleSendMessage = async (textToSend: string) => {
+    if (!textToSend.trim()) return;
+
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      sender: 'user',
+      text: textToSend
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setInputText('');
+    setLoading(true);
+
+    const { day, diet, budget: currentBudget } = parsePrompt(textToSend);
+    const plan = RECIPE_INGREDIENTS[day][diet];
+    const todo = TIMELINE_CONFIGS[day].map(t => ({ ...t, completed: false }));
+
+    let cartData = null;
+    let restaurantList: any[] = [];
+    let selectedRest: any = null;
+    let menuList: any[] = [];
+    let foodCart: any = null;
+    let coupons: any[] = [];
+
+    if (activeTabGlobal === 'instamart') {
+      // Instamart Flow
       const queries = Array.from(new Set([
         ...plan.breakfast.searchQueries,
         ...plan.lunch.searchQueries,
@@ -219,28 +281,88 @@ export default function Home() {
 
       const cartRes = await callMcp('update_cart', { items: cartItems });
       if (cartRes.success) {
-        setCartDetails(cartRes.cart);
+        cartData = cartRes.cart;
       }
     } else {
+      // Food Flow
       const restRes = await callMcp('search_restaurants', { query: 'healthy' });
       if (restRes.success && restRes.restaurants?.length > 0) {
-        setRestaurants(restRes.restaurants);
-        const chosen = restRes.restaurants[0];
-        setSelectedRestaurant(chosen);
-        await selectRestaurant(chosen.id);
+        restaurantList = restRes.restaurants;
+        selectedRest = restRes.restaurants[0];
+        
+        const menuRes = await callMcp('get_restaurant_menu', { restaurantId: selectedRest.id });
+        if (menuRes.success) {
+          menuList = menuRes.items || [];
+          const itemsToAdd = menuList.slice(0, 2).map((item: any) => ({
+            itemId: item.id,
+            quantity: 1
+          }));
+
+          const cartRes = await callMcp('update_food_cart', { restaurantId: selectedRest.id, items: itemsToAdd });
+          if (cartRes.success) {
+            foodCart = cartRes.cart;
+          }
+
+          const coupRes = await callMcp('fetch_food_coupons');
+          if (coupRes.success) {
+            coupons = coupRes.coupons || [];
+          }
+        }
       }
     }
-    
-    setPlanGenerated(true);
+
+    const botMsg: Message = {
+      id: (Date.now() + 1).toString(),
+      sender: 'assistant',
+      text: `Based on your request, I have generated a personalized plan for your **${day}** day following a **${diet}** diet constraints within a target budget of **₹${currentBudget}**:`,
+      planData: {
+        dayProfile: day,
+        dietPreference: diet,
+        budget: currentBudget,
+        mealPlan: plan,
+        todoList: todo,
+        cartDetails: cartData,
+        activeTab: activeTabGlobal,
+        restaurants: restaurantList,
+        selectedRestaurant: selectedRest,
+        foodMenu: menuList,
+        foodCartDetails: foodCart,
+        availableCoupons: coupons,
+        appliedCoupon: null,
+        trackingDetails: null
+      }
+    };
+
+    setMessages(prev => [...prev, botMsg]);
     setLoading(false);
   };
 
-  // Instamart Substitutions
-  const handleSubstitute = async () => {
-    if (!cartDetails) return;
+  const handleCheckboxToggle = (msgId: string, todoIndex: number) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.id === msgId && msg.planData) {
+        const updatedTodo = [...msg.planData.todoList];
+        updatedTodo[todoIndex] = {
+          ...updatedTodo[todoIndex],
+          completed: !updatedTodo[todoIndex].completed
+        };
+        return {
+          ...msg,
+          planData: {
+            ...msg.planData,
+            todoList: updatedTodo
+          }
+        };
+      }
+      return msg;
+    }));
+  };
+
+  const handleSubstituteItem = async (msgId: string) => {
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg || !msg.planData || !msg.planData.cartDetails) return;
     setLoading(true);
 
-    const updatedItems = cartDetails.items.map((item: any) => {
+    const updatedItems = msg.planData.cartDetails.items.map((item: any) => {
       if (item.substituteId) {
         return { productId: item.substituteId, quantity: item.quantity };
       }
@@ -249,54 +371,55 @@ export default function Home() {
 
     const cartRes = await callMcp('update_cart', { items: updatedItems });
     if (cartRes.success) {
-      setCartDetails(cartRes.cart);
+      setMessages(prev => prev.map(m => {
+        if (m.id === msgId && m.planData) {
+          return {
+            ...m,
+            planData: {
+              ...m.planData,
+              cartDetails: cartRes.cart
+            }
+          };
+        }
+        return m;
+      }));
     }
     setLoading(false);
   };
 
-  // Food Menu Selection
-  const selectRestaurant = async (restaurantId: string) => {
-    const menuRes = await callMcp('get_restaurant_menu', { restaurantId });
-    if (menuRes.success) {
-      setFoodMenu(menuRes.items || []);
-      
-      const itemsToAdd = menuRes.items.slice(0, 2).map((item: any) => ({
-        itemId: item.id,
-        quantity: 1
-      }));
-
-      const cartRes = await callMcp('update_food_cart', { restaurantId, items: itemsToAdd });
-      if (cartRes.success) {
-        setFoodCartDetails(cartRes.cart);
-      }
-
-      const coupRes = await callMcp('fetch_food_coupons');
-      if (coupRes.success) {
-        setAvailableCoupons(coupRes.coupons || []);
-      }
-    }
-  };
-
-  const handleApplyCoupon = async (code: string) => {
+  const handleApplyCouponCode = async (msgId: string, code: string) => {
     setLoading(true);
     const cartRes = await callMcp('apply_food_coupon', { code });
     if (cartRes.success) {
-      setFoodCartDetails(cartRes.cart);
-      setAppliedCoupon(code);
+      setMessages(prev => prev.map(m => {
+        if (m.id === msgId && m.planData) {
+          return {
+            ...m,
+            planData: {
+              ...m.planData,
+              foodCartDetails: cartRes.cart,
+              appliedCoupon: code
+            }
+          };
+        }
+        return m;
+      }));
     }
     setLoading(false);
   };
 
-  // Checkout flows
-  const handleCheckout = async () => {
+  const handleOrderCheckout = async (msgId: string) => {
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg || !msg.planData) return;
     setLoading(true);
-    if (activeTab === 'instamart') {
+
+    if (msg.planData.activeTab === 'instamart') {
       const checkoutRes = await callMcp('checkout');
       if (checkoutRes.success) {
         setOrderResult(checkoutRes);
         setOrderModalOpen(true);
       } else {
-        alert(checkoutRes.error || 'Failed to place Instamart order.');
+        alert(checkoutRes.error || 'Failed to place order.');
       }
     } else {
       const checkoutRes = await callMcp('place_food_order', { paymentMethod: 'COD' });
@@ -305,32 +428,65 @@ export default function Home() {
         setOrderModalOpen(true);
         const trackRes = await callMcp('track_food_order', { orderId: checkoutRes.orderId });
         if (trackRes.success) {
-          setTrackingDetails(trackRes);
+          setMessages(prev => prev.map(m => {
+            if (m.id === msgId && m.planData) {
+              return {
+                ...m,
+                planData: {
+                  ...m.planData,
+                  trackingDetails: trackRes
+                }
+              };
+            }
+            return m;
+          }));
         }
       } else {
-        alert(checkoutRes.error || 'Failed to place Food order.');
+        alert(checkoutRes.error || 'Failed to place order.');
       }
     }
     setLoading(false);
   };
 
-  const imCartTotal = cartDetails?.billBreakdown?.grandTotal || 0;
-  const imIsOverBudget = imCartTotal > budget;
-  const imProgressPercent = Math.min((imCartTotal / budget) * 100, 100);
+  const selectRestFromList = async (msgId: string, restaurant: any) => {
+    setLoading(true);
+    const menuRes = await callMcp('get_restaurant_menu', { restaurantId: restaurant.id });
+    if (menuRes.success) {
+      const itemsToAdd = (menuRes.items || []).slice(0, 2).map((item: any) => ({
+        itemId: item.id,
+        quantity: 1
+      }));
 
-  const foodCartTotal = foodCartDetails?.billBreakdown?.grandTotal || 0;
-  const foodIsOverBudget = foodCartTotal > budget;
-  const foodProgressPercent = Math.min((foodCartTotal / budget) * 100, 100);
+      const cartRes = await callMcp('update_food_cart', { restaurantId: restaurant.id, items: itemsToAdd });
+      if (cartRes.success) {
+        setMessages(prev => prev.map(m => {
+          if (m.id === msgId && m.planData) {
+            return {
+              ...m,
+              planData: {
+                ...m.planData,
+                selectedRestaurant: restaurant,
+                foodMenu: menuRes.items || [],
+                foodCartDetails: cartRes.cart,
+                appliedCoupon: null
+              }
+            };
+          }
+          return m;
+        }));
+      }
+    }
+    setLoading(false);
+  };
 
-  // Landing view (Not logged in)
+  // Splash view if not logged in
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen w-full bg-[#F0EBDA] text-[#1E2016] flex flex-col items-center justify-center font-serif relative px-4">
         <div className="w-full max-w-[420px] text-center space-y-8">
           <div className="flex flex-col items-center gap-3">
             <h1 className="text-4xl font-display font-light tracking-tight">
-              Swiggy MCP <br />
-              <span className="text-[#B0361B] italic font-semibold">Tea House Planner</span>
+              <span className="text-[#B0361B] italic font-semibold">PromptRecipe</span>
             </h1>
             <p className="font-sans-jp tracking-[0.2em] uppercase text-[0.72rem] text-[#7B8069]">
               Standardized Culinary Management
@@ -345,7 +501,6 @@ export default function Home() {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              {/* PRIMARY ACTION BUTTON IN CLAY RED */}
               <Button onClick={handleOAuthLogin} className="w-full bg-[#B0361B] text-[#F8F3E1] hover:bg-[#962d16] font-sans-jp tracking-[0.1em] font-bold py-3 flex items-center justify-center gap-2 rounded-md">
                 <Key className="w-4 h-4" /> Connect Swiggy Account (OAuth)
               </Button>
@@ -356,28 +511,27 @@ export default function Home() {
     );
   }
 
-  // Dashboard Interface (Logged In)
   return (
     <div className="min-h-screen w-full bg-[#F0EBDA] text-[#1E2016] flex flex-col font-serif pb-16">
-      <header className="max-w-7xl mx-auto w-full px-6 py-8 border-b border-[#7B8069]/40 flex items-center justify-between">
+      {/* Top Header */}
+      <header className="max-w-7xl mx-auto w-full px-6 py-6 border-b border-[#7B8069]/40 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-display font-light">
-            Swiggy MCP <span className="text-[#B0361B] italic">Tea House Planner</span>
+            <span className="text-[#B0361B] italic">PromptRecipe</span>
           </h1>
         </div>
         
         <div className="flex items-center gap-4">
-          {/* Vertical Toggle */}
           <div className="bg-[#F8F3E1] p-1 border border-[#7B8069] rounded-md flex text-xs gap-1">
             <button
-              onClick={() => { setActiveTab('instamart'); setPlanGenerated(false); }}
-              className={`px-4 py-1.5 rounded-sm transition-all font-sans-jp tracking-[0.1em] uppercase text-[10px] ${activeTab === 'instamart' ? 'bg-[#1E2016] text-[#F8F3E1] font-bold' : 'text-[#7B8069] hover:text-[#1E2016]'}`}
+              onClick={() => setActiveTabGlobal('instamart')}
+              className={`px-4 py-1 rounded-sm transition-all font-sans-jp tracking-[0.1em] uppercase text-[9px] ${activeTabGlobal === 'instamart' ? 'bg-[#1E2016] text-[#F8F3E1] font-bold' : 'text-[#7B8069] hover:text-[#1E2016]'}`}
             >
               Grocery Delivery
             </button>
             <button
-              onClick={() => { setActiveTab('food'); setPlanGenerated(false); }}
-              className={`px-4 py-1.5 rounded-sm transition-all font-sans-jp tracking-[0.1em] uppercase text-[10px] ${activeTab === 'food' ? 'bg-[#1E2016] text-[#F8F3E1] font-bold' : 'text-[#7B8069] hover:text-[#1E2016]'}`}
+              onClick={() => setActiveTabGlobal('food')}
+              className={`px-4 py-1 rounded-sm transition-all font-sans-jp tracking-[0.1em] uppercase text-[9px] ${activeTabGlobal === 'food' ? 'bg-[#1E2016] text-[#F8F3E1] font-bold' : 'text-[#7B8069] hover:text-[#1E2016]'}`}
             >
               Food Delivery
             </button>
@@ -396,345 +550,284 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Grid */}
-      <main className="max-w-7xl mx-auto w-full px-6 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-8 mt-10 items-start">
-        {/* Left Form Panel */}
-        <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
-          <CardHeader className="p-0 mb-4">
-            <CardTitle className="text-lg font-display text-[#1E2016]">Configure Plan</CardTitle>
-            <CardDescription className="text-[#7B8069] text-xs font-serif mt-1">
-              {activeTab === 'instamart' ? 'Source fresh ingredients via Instamart.' : 'Order pre-cooked meals via Food Delivery.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0 space-y-4">
-            <div className="space-y-1.5">
-              <label className="font-sans-jp tracking-[0.2em] uppercase text-[10px] text-[#7B8069]">Day Schedule</label>
-              <select
-                value={dayProfile}
-                onChange={(e) => setDayProfile(e.target.value)}
-                className="w-full bg-[#F0EBDA] border border-[#7B8069] rounded-md px-3 py-2 text-sm outline-none text-[#1E2016] focus:border-[#B0361B] transition-colors font-serif"
-              >
-                <option value="busy">Busy (Quick meals)</option>
-                <option value="moderate">Moderate (Standard prep)</option>
-                <option value="free">Free Weekend (Relaxed gourmet)</option>
-              </select>
-            </div>
+      {/* Main Chat Interface */}
+      <main className="max-w-4xl mx-auto w-full px-6 flex flex-col flex-1 mt-8 min-h-[500px]">
+        {/* Dialogue Log */}
+        <div className="flex-1 space-y-6 overflow-y-auto max-h-[650px] pr-2">
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex gap-4 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+              
+              {/* Bot Icon */}
+              {msg.sender === 'assistant' && (
+                <div className="w-8 h-8 rounded-full bg-[#1E2016] text-[#F8F3E1] flex items-center justify-center shrink-0">
+                  <Bot className="w-4 h-4" />
+                </div>
+              )}
 
-            <div className="space-y-1.5">
-              <label className="font-sans-jp tracking-[0.2em] uppercase text-[10px] text-[#7B8069]">Diet Preference</label>
-              <select
-                value={dietPreference}
-                onChange={(e) => setDietPreference(e.target.value)}
-                className="w-full bg-[#F0EBDA] border border-[#7B8069] rounded-md px-3 py-2 text-sm outline-none text-[#1E2016] focus:border-[#B0361B] transition-colors font-serif"
-              >
-                <option value="balanced">Balanced Diet</option>
-                <option value="high-protein">High Protein</option>
-                <option value="vegetarian">Vegetarian Only</option>
-              </select>
-            </div>
+              {/* Message Box */}
+              <div className={`max-w-[85%] rounded-lg p-4 font-serif text-sm leading-relaxed ${
+                msg.sender === 'user' 
+                  ? 'bg-[#1E2016] text-[#F8F3E1]' 
+                  : 'bg-[#F8F3E1] border border-[#7B8069] text-[#1E2016]'
+              }`}>
+                {/* Text Content */}
+                <div className="prose prose-sm dark:prose-invert">
+                  {msg.text}
+                </div>
 
-            <div className="space-y-1.5">
-              <label className="font-sans-jp tracking-[0.2em] uppercase text-[10px] text-[#7B8069]">Daily Budget (INR)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7B8069] text-sm font-semibold">₹</span>
-                <input
-                  type="number"
-                  value={budget}
-                  onChange={(e) => setBudget(Number(e.target.value))}
-                  min={150}
-                  className="w-full bg-[#F0EBDA] border border-[#7B8069] rounded-md pl-7 pr-3 py-2 text-sm outline-none text-[#1E2016] focus:border-[#B0361B] transition-colors font-serif"
-                />
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter className="p-0 mt-6">
-            {/* If plan is NOT generated yet, this is the sole Tertiary action button */}
-            <Button
-              onClick={handleGenerate}
-              disabled={loading}
-              className={`w-full text-[#F8F3E1] font-sans-jp tracking-[0.1em] font-bold py-2.5 rounded-md transition-all ${
-                !planGenerated ? 'bg-[#B0361B] hover:bg-[#962d16]' : 'bg-[#7B8069] hover:bg-[#1E2016]'
-              }`}
-            >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Generate Plan'}
-            </Button>
-          </CardFooter>
-        </Card>
-
-        {/* Results Area */}
-        {planGenerated && mealPlan && (
-          <div className="space-y-8 animate-in fade-in duration-300">
-            {/* Meal Plan & Todo Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Daily Meals */}
-              <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
-                <CardHeader className="p-0 mb-4">
-                  <CardTitle className="text-lg font-display text-[#1E2016]">Daily Meals</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 space-y-4">
-                  {(['breakfast', 'lunch', 'dinner'] as const).map((mealKey) => {
-                    const meal = mealPlan[mealKey];
-                    return (
-                      <div key={mealKey} className="p-4 bg-[#F0EBDA]/50 border border-[#7B8069]/30 rounded-md flex flex-col gap-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <Badge variant="outline" className={`text-[9px] font-sans-jp tracking-wider uppercase border-[#7B8069] text-[#7B8069] bg-transparent`}>
-                            {mealKey}
-                          </Badge>
-                          <span className="text-[11px] text-[#7B8069] flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> {meal.time}
-                          </span>
-                        </div>
-                        <h4 className="font-semibold text-[#1E2016] text-sm font-serif">{meal.name}</h4>
-                        <p className="text-xs text-[#7B8069] leading-relaxed font-serif">{meal.desc}</p>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-
-              {/* Cooking Todo */}
-              <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
-                <CardHeader className="p-0 mb-4">
-                  <CardTitle className="text-lg font-display text-[#1E2016]">Cooking Timeline</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="relative pl-6 border-l border-[#7B8069]/50 space-y-6">
-                    {todoList.map((item, index) => (
-                      <div key={index} className="relative">
-                        <div className="absolute -left-[31px] top-1 w-2 h-2 rounded-full bg-[#B0361B]" />
-                        <span className="font-sans-jp tracking-[0.1em] uppercase text-[10px] text-[#B0361B] block mb-0.5">{item.time}</span>
-                        <p className="text-xs text-[#1E2016] leading-relaxed font-serif">{item.task}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Vertical Content: Groceries vs Food Delivery */}
-            {activeTab === 'instamart' ? (
-              /* INSTAMART SECTION */
-              cartDetails && (
-                <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
-                  <CardHeader className="flex flex-row items-center justify-between border-b border-[#7B8069]/40 pb-4 p-0 mb-4">
-                    <div>
-                      <CardTitle className="text-lg font-display text-[#1E2016]">Swiggy Instamart Cart</CardTitle>
-                      <CardDescription className="text-[#7B8069] text-xs font-serif mt-1">Ingredients synchronized via Swiggy MCP protocol</CardDescription>
-                    </div>
-                    <Badge className="bg-[#1E2016] text-[#F8F3E1] font-sans-jp tracking-wider uppercase text-[10px] px-3 py-1 rounded-sm">
-                      instamart
-                    </Badge>
-                  </CardHeader>
-                  <CardContent className="p-0 space-y-6">
-                    <div className="divide-y divide-[#7B8069]/20">
-                      {cartDetails.items.map((item: any) => (
-                        <div key={item.id} className="py-3 flex items-center justify-between text-xs font-serif">
-                          <div className="space-y-1">
-                            <span className="font-semibold text-[#1E2016] block">{item.name} (x{item.quantity})</span>
-                            {item.substituteId && (
-                              <span className="text-[10px] text-[#B0361B] font-sans-jp tracking-wider flex items-center gap-1">
-                                <Sparkles className="w-3 h-3" /> Can replace with: {item.substituteText}
-                              </span>
-                            )}
+                {/* Plan data card overlay */}
+                {msg.planData && (
+                  <div className="mt-4 space-y-6 pt-4 border-t border-[#7B8069]/30">
+                    
+                    {/* Meals Card Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {(['breakfast', 'lunch', 'dinner'] as const).map((mealKey) => {
+                        const meal = msg.planData!.mealPlan[mealKey];
+                        return (
+                          <div key={mealKey} className="p-3 bg-[#F0EBDA]/55 border border-[#7B8069]/20 rounded-md">
+                            <span className="font-sans-jp tracking-wider uppercase text-[8px] border border-[#7B8069] px-1 rounded-sm text-[#7B8069]">{mealKey}</span>
+                            <h5 className="font-bold text-xs mt-1.5">{meal.name}</h5>
+                            <p className="text-[11px] text-[#7B8069] mt-0.5 leading-relaxed">{meal.desc}</p>
                           </div>
-                          <span className="font-bold text-[#1E2016] text-sm">₹{item.totalCost}</span>
+                        );
+                      })}
+                    </div>
+
+                    {/* Timeline with Active Checkbox */}
+                    <div className="p-4 bg-[#F0EBDA]/45 border border-[#7B8069]/30 rounded-md">
+                      <span className="font-sans-jp tracking-wider text-[9px] uppercase text-[#7B8069] font-bold block mb-3">Cooking Checklist Timeline</span>
+                      <div className="space-y-3">
+                        {msg.planData.todoList.map((item, index) => (
+                          <div key={index} className="flex gap-3 items-start">
+                            <button 
+                              onClick={() => handleCheckboxToggle(msg.id, index)}
+                              className="w-4 h-4 mt-0.5 rounded border border-[#7B8069] flex items-center justify-center text-[#B0361B] hover:bg-[#F0EBDA]/50 transition-all shrink-0"
+                            >
+                              {item.completed && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </button>
+                            <div className="text-xs">
+                              <span className="font-sans-jp font-bold text-[9px] text-[#B0361B] uppercase tracking-wider block">{item.time}</span>
+                              <span className={`text-[#1E2016] ${item.completed ? 'line-through text-[#7B8069]' : ''}`}>{item.task}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Groceries tab logic (Instamart) */}
+                    {msg.planData.activeTab === 'instamart' && msg.planData.cartDetails && (
+                      <div className="space-y-4">
+                        <span className="font-sans-jp tracking-wider text-[9px] uppercase text-[#7B8069] font-bold block">Instamart Shopping List</span>
+                        <div className="divide-y divide-[#7B8069]/20">
+                          {msg.planData.cartDetails.items.map((item: any) => (
+                            <div key={item.id} className="py-2 flex justify-between items-center text-xs">
+                              <div>
+                                <span className="font-semibold">{item.name} (x{item.quantity})</span>
+                                {item.substituteId && (
+                                  <span className="text-[9px] text-[#B0361B] font-sans-jp tracking-wider block mt-0.5">💡 Alternative: {item.substituteText}</span>
+                                )}
+                              </div>
+                              <span className="font-bold">₹{item.totalCost}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
 
-                    {/* Budget Widget */}
-                    <div className="bg-[#F0EBDA]/60 border border-[#7B8069]/50 p-4 rounded-md space-y-3">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-[#7B8069]">Cart Total: <strong className="text-[#1E2016]">₹{imCartTotal}</strong></span>
-                        <span className="text-[#7B8069]">Daily Budget: <strong className="text-[#1E2016]">₹{budget}</strong></span>
-                      </div>
-                      <Progress value={imProgressPercent} className="h-1 bg-[#F0EBDA]" />
-                      
-                      <div className="flex items-center gap-2 mt-1">
-                        {imIsOverBudget ? (
-                          <>
-                            <AlertTriangle className="w-4 h-4 text-[#B0361B] shrink-0" />
-                            <span className="text-xs text-[#B0361B] font-semibold leading-none">
-                              Budget exceeded by ₹{imCartTotal - budget}! Try substitutions.
+                        {/* Budget Progress bar */}
+                        <div className="bg-[#F0EBDA]/60 p-3 rounded-md border border-[#7B8069]/40 space-y-2">
+                          <div className="flex justify-between text-[11px] text-[#7B8069]">
+                            <span>Cart Total: <strong>₹{msg.planData.cartDetails.billBreakdown.grandTotal}</strong></span>
+                            <span>Limit: <strong>₹{msg.planData.budget}</strong></span>
+                          </div>
+                          <Progress value={Math.min((msg.planData.cartDetails.billBreakdown.grandTotal / msg.planData.budget) * 100, 100)} className="h-1 bg-[#F0EBDA]" />
+                          {msg.planData.cartDetails.billBreakdown.grandTotal > msg.planData.budget ? (
+                            <span className="text-[10px] text-[#B0361B] font-semibold flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Exceeds budget by ₹{msg.planData.cartDetails.billBreakdown.grandTotal - msg.planData.budget}.
                             </span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-[#7B8069] shrink-0" />
-                            <span className="text-xs text-[#7B8069] font-semibold leading-none">
-                              Meal plan is fully feasible within budget.
+                          ) : (
+                            <span className="text-[10px] text-[#7B8069] font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-[#7B8069] shrink-0" /> FEASIBLE within daily budget.
                             </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
+                          )}
+                        </div>
 
-                  <CardFooter className="flex gap-4 border-t border-[#7B8069]/40 pt-6 p-0 mt-6">
-                    {imIsOverBudget && cartDetails.items.some((i: any) => i.substituteId) && (
-                      <Button
-                        onClick={handleSubstitute}
-                        disabled={loading}
-                        variant="outline"
-                        className="flex-1 border-[#7B8069] text-[#1E2016] hover:bg-[#F0EBDA] font-sans-jp tracking-wider rounded-md text-xs py-2"
-                      >
-                        <Sparkles className="w-4 h-4 mr-2" /> Substitute Items
-                      </Button>
+                        {/* Actions */}
+                        <div className="flex gap-3 pt-2">
+                          {msg.planData.cartDetails.billBreakdown.grandTotal > msg.planData.budget && msg.planData.cartDetails.items.some((i: any) => i.substituteId) && (
+                            <Button
+                              onClick={() => handleSubstituteItem(msg.id)}
+                              disabled={loading}
+                              variant="outline"
+                              className="flex-1 border-[#7B8069] text-xs h-9 font-sans-jp tracking-wider"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Auto-Substitute
+                            </Button>
+                          )}
+                          {/* PRIMARY DRIVER IN CLAY RED */}
+                          <Button
+                            onClick={() => handleOrderCheckout(msg.id)}
+                            disabled={loading}
+                            className="flex-1 bg-[#B0361B] hover:bg-[#962d16] text-[#F8F3E1] font-sans-jp tracking-wider text-xs h-9"
+                          >
+                            <ShoppingCart className="w-3.5 h-3.5 mr-1.5" /> Order via Instamart
+                          </Button>
+                        </div>
+                      </div>
                     )}
-                    {/* PRIMARY DRIVER BUTTON IN CLAY RED */}
-                    <Button
-                      onClick={handleCheckout}
-                      disabled={loading}
-                      className="flex-1 bg-[#B0361B] hover:bg-[#962d16] text-[#F8F3E1] font-sans-jp tracking-wider font-bold rounded-md py-2 text-xs"
-                    >
-                      <ShoppingCart className="w-4 h-4 mr-2" /> Place Instamart Order
-                    </Button>
-                  </CardFooter>
-                </Card>
-              )
-            ) : (
-              /* FOOD DELIVERY SECTION */
-              foodCartDetails && (
-                <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
-                  <CardHeader className="flex flex-row items-center justify-between border-b border-[#7B8069]/40 pb-4 p-0 mb-4">
-                    <div>
-                      <CardTitle className="text-lg font-display text-[#1E2016]">Swiggy Food Order (COD Only)</CardTitle>
-                      <CardDescription className="text-[#7B8069] text-xs font-serif mt-1">
-                        Ordering meals from <strong className="text-[#1E2016]">{selectedRestaurant?.name || 'Selected Restaurant'}</strong>
-                      </CardDescription>
-                    </div>
-                    <Badge className="bg-[#1E2016] text-[#F8F3E1] font-sans-jp tracking-wider uppercase text-[10px] px-3 py-1 rounded-sm">
-                      food
-                    </Badge>
-                  </CardHeader>
-                  <CardContent className="p-0 space-y-6">
-                    {/* Restaurant list */}
-                    <div className="flex gap-4 items-center justify-between bg-[#F0EBDA]/45 p-4 rounded-md border border-[#7B8069]/30">
-                      <div className="space-y-1.5 w-full">
-                        <span className="text-[10px] uppercase font-sans-jp tracking-wider text-[#7B8069] font-semibold block">Restaurant Catalog</span>
-                        <div className="flex gap-2 items-center flex-wrap">
-                          {restaurants.map(r => (
+
+                    {/* Cooked meals tab logic (Food) */}
+                    {msg.planData.activeTab === 'food' && msg.planData.foodCartDetails && (
+                      <div className="space-y-4">
+                        <span className="font-sans-jp tracking-wider text-[9px] uppercase text-[#7B8069] font-bold block">Food Delivery Details</span>
+                        <div className="flex gap-2 flex-wrap pb-2 border-b border-[#7B8069]/20">
+                          {msg.planData.restaurants.map(r => (
                             <button
                               key={r.id}
-                              onClick={() => { setSelectedRestaurant(r); selectRestaurant(r.id); }}
-                              className={`text-xs px-3 py-1.5 rounded-md border transition-all ${selectedRestaurant?.id === r.id ? 'bg-[#B0361B]/10 border-[#B0361B] text-[#B0361B] font-bold' : 'border-[#7B8069]/40 text-[#7B8069]'}`}
+                              onClick={() => selectRestFromList(msg.id, r)}
+                              className={`text-[10px] px-2 py-1 rounded-sm border transition-all ${msg.planData?.selectedRestaurant?.id === r.id ? 'bg-[#B0361B]/10 border-[#B0361B] text-[#B0361B] font-bold' : 'border-[#7B8069]/40 text-[#7B8069]'}`}
                             >
                               {r.name} ({r.rating}★)
                             </button>
                           ))}
                         </div>
-                      </div>
-                    </div>
 
-                    {/* Food Items list */}
-                    <div className="divide-y divide-[#7B8069]/20">
-                      {foodCartDetails.items.map((item: any) => (
-                        <div key={item.id} className="py-3 flex items-center justify-between text-xs font-serif">
-                          <div>
-                            <span className="font-semibold text-[#1E2016] block">{item.name} (x{item.quantity})</span>
-                          </div>
-                          <span className="font-bold text-[#1E2016] text-sm">₹{item.totalCost}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Coupons and offers */}
-                    {availableCoupons.length > 0 && (
-                      <div className="bg-[#F0EBDA]/40 p-4 rounded-md border border-[#7B8069]/30 space-y-2.5">
-                        <span className="text-[10px] uppercase font-sans-jp tracking-wider text-[#B0361B] block">Available Coupons</span>
-                        {availableCoupons.map(coupon => (
-                          <div key={coupon.code} className="flex justify-between items-center text-xs">
-                            <div>
-                              <Badge className="bg-transparent border border-[#B0361B] text-[#B0361B] font-bold text-[10px] px-2 py-0.5 rounded-sm">
-                                {coupon.code}
-                              </Badge>
-                              <span className="text-[11px] text-[#7B8069] ml-2">{coupon.description}</span>
+                        <div className="divide-y divide-[#7B8069]/20">
+                          {msg.planData.foodCartDetails.items.map((item: any) => (
+                            <div key={item.id} className="py-2 flex justify-between items-center text-xs">
+                              <span>{item.name} (x{item.quantity})</span>
+                              <span className="font-bold">₹{item.totalCost}</span>
                             </div>
-                            <Button
-                              onClick={() => handleApplyCoupon(coupon.code)}
-                              disabled={appliedCoupon === coupon.code}
-                              size="sm"
-                              variant="outline"
-                              className="h-7 border-[#7B8069] text-xs px-3 rounded-md"
-                            >
-                              {appliedCoupon === coupon.code ? 'Applied' : 'Apply'}
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
 
-                    {/* Budget Widget */}
-                    <div className="bg-[#F0EBDA]/60 border border-[#7B8069]/50 p-4 rounded-md space-y-3">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-[#7B8069]">Cart Total: <strong className="text-[#1E2016]">₹{foodCartTotal}</strong></span>
-                        <span className="text-[#7B8069]">Daily Budget: <strong className="text-[#1E2016]">₹{budget}</strong></span>
-                      </div>
-                      <Progress value={foodProgressPercent} className="h-1 bg-[#F0EBDA]" />
-                      
-                      <div className="flex items-center gap-2 mt-1">
-                        {foodIsOverBudget ? (
-                          <>
-                            <AlertTriangle className="w-4 h-4 text-[#B0361B] shrink-0" />
-                            <span className="text-xs text-[#B0361B] font-semibold leading-none">
-                              Cart exceeds target daily budget by ₹{foodCartTotal - budget}!
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-[#7B8069] shrink-0" />
-                            <span className="text-xs text-[#7B8069] font-semibold leading-none">
-                              Food order fits your daily budget constraints.
-                            </span>
-                          </>
+                        {/* Coupons code */}
+                        {msg.planData.availableCoupons.length > 0 && (
+                          <div className="bg-[#F0EBDA]/40 p-3 rounded-md border border-[#7B8069]/20 space-y-2">
+                            <span className="text-[8px] uppercase tracking-wider font-bold text-[#B0361B] block">Discounts</span>
+                            {msg.planData.availableCoupons.map(c => (
+                              <div key={c.code} className="flex justify-between items-center text-xs">
+                                <span className="font-semibold text-[#B0361B]">{c.code}</span>
+                                <Button
+                                  onClick={() => handleApplyCouponCode(msg.id, c.code)}
+                                  disabled={msg.planData?.appliedCoupon === c.code}
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 text-[10px] px-2 border-[#7B8069]"
+                                >
+                                  {msg.planData?.appliedCoupon === c.code ? 'Applied' : 'Apply'}
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Budget Bar */}
+                        <div className="bg-[#F0EBDA]/60 p-3 rounded-md border border-[#7B8069]/40 space-y-2">
+                          <div className="flex justify-between text-[11px] text-[#7B8069]">
+                            <span>Cart Total: <strong>₹{msg.planData.foodCartDetails.billBreakdown.grandTotal}</strong></span>
+                            <span>Limit: <strong>₹{msg.planData.budget}</strong></span>
+                          </div>
+                          <Progress value={Math.min((msg.planData.foodCartDetails.billBreakdown.grandTotal / msg.planData.budget) * 100, 100)} className="h-1 bg-[#F0EBDA]" />
+                        </div>
+
+                        {/* Primary checkout CTA in clay red */}
+                        <Button
+                          onClick={() => handleOrderCheckout(msg.id)}
+                          disabled={loading || msg.planData.foodCartDetails.billBreakdown.grandTotal > 1000}
+                          className="w-full bg-[#B0361B] hover:bg-[#962d16] text-[#F8F3E1] font-sans-jp tracking-wider text-xs h-9 rounded-md"
+                        >
+                          <ShoppingCart className="w-3.5 h-3.5 mr-1.5" /> Order Cooked Meals (COD)
+                        </Button>
+
+                        {/* Tracking details */}
+                        {msg.planData.trackingDetails && (
+                          <div className="bg-[#B0361B]/5 border border-[#B0361B]/35 p-3 rounded-md flex items-center justify-between text-xs font-serif animate-pulse">
+                            <div>
+                              <span className="text-[#B0361B] font-bold block">Rider Assigned</span>
+                              <span className="text-[10px] text-[#7B8069]">Rider {msg.planData.trackingDetails.deliveryPartner} has left the store.</span>
+                            </div>
+                            <span className="font-extrabold text-[#B0361B]">{msg.planData.trackingDetails.eta}</span>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </CardContent>
-
-                  <CardFooter className="flex flex-col gap-4 border-t border-[#7B8069]/40 pt-6 p-0 mt-6">
-                    {/* PRIMARY ACTION DRIVER IN CLAY RED */}
-                    <Button
-                      onClick={handleCheckout}
-                      disabled={loading || foodCartTotal > 1000}
-                      className="w-full bg-[#B0361B] hover:bg-[#962d16] text-[#F8F3E1] font-sans-jp tracking-wider font-bold rounded-md py-3 text-xs"
-                    >
-                      <ShoppingCart className="w-4 h-4 mr-2" /> Order Cooked Meals (COD)
-                    </Button>
-                    {foodCartTotal > 1000 && (
-                      <span className="text-[10px] text-[#B0361B] flex items-center gap-1 font-serif">
-                        <Info className="w-3 h-3" /> Swiggy v1 cap: Orders must not exceed ₹1000.
-                      </span>
                     )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
 
-                    {/* Rider tracking */}
-                    {trackingDetails && (
-                      <div className="w-full bg-[#B0361B]/5 border border-[#B0361B]/30 p-4 rounded-md mt-2 flex items-center justify-between text-xs font-serif">
-                        <div className="space-y-1">
-                          <span className="text-[#B0361B] font-bold">Delivery Status: {trackingDetails.status}</span>
-                          <p className="text-[#7B8069] text-[11px]">Rider {trackingDetails.deliveryPartner} is on the way.</p>
-                        </div>
-                        <span className="font-extrabold text-[#B0361B]">{trackingDetails.eta}</span>
-                      </div>
-                    )}
-                  </CardFooter>
-                </Card>
-              )
-            )}
+          {loading && (
+            <div className="flex gap-4 justify-start items-center">
+              <div className="w-8 h-8 rounded-full bg-[#1E2016] text-[#F8F3E1] flex items-center justify-center shrink-0">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              </div>
+              <span className="text-xs text-[#7B8069] font-sans-jp tracking-wider">Generating customized recipe plan...</span>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Suggested Prompts (if chat is fresh) */}
+        {messages.length === 1 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 animate-in fade-in duration-300">
+            <button 
+              onClick={() => handleSendMessage("I have a super busy day at work. I need quick high-protein meals with a budget of ₹450.")}
+              className="p-4 bg-[#F8F3E1] border border-[#7B8069] rounded-md text-left hover:bg-[#F0EBDA] transition-all text-xs space-y-1.5"
+            >
+              <span className="font-sans-jp tracking-wider text-[8px] uppercase text-[#B0361B] font-bold">Quick & Protein</span>
+              <p className="text-[#1E2016] font-serif leading-relaxed">"I have a super busy day at work. I need quick high-protein meals with a budget of ₹450."</p>
+            </button>
+            <button 
+              onClick={() => handleSendMessage("Help me plan a relaxing weekend. Vegetarian recipes, budget within ₹300.")}
+              className="p-4 bg-[#F8F3E1] border border-[#7B8069] rounded-md text-left hover:bg-[#F0EBDA] transition-all text-xs space-y-1.5"
+            >
+              <span className="font-sans-jp tracking-wider text-[8px] uppercase text-[#B0361B] font-bold">Vegetarian Feast</span>
+              <p className="text-[#1E2016] font-serif leading-relaxed">"Help me plan a relaxing weekend. Vegetarian recipes, budget within ₹300."</p>
+            </button>
+            <button 
+              onClick={() => handleSendMessage("Generate a balanced meal plan for a standard moderate schedule, budget ₹500.")}
+              className="p-4 bg-[#F8F3E1] border border-[#7B8069] rounded-md text-left hover:bg-[#F0EBDA] transition-all text-xs space-y-1.5"
+            >
+              <span className="font-sans-jp tracking-wider text-[8px] uppercase text-[#B0361B] font-bold">Moderate & Balanced</span>
+              <p className="text-[#1E2016] font-serif leading-relaxed">"Generate a balanced meal plan for a standard moderate schedule, budget ₹500."</p>
+            </button>
           </div>
         )}
+
+        {/* Message Input Form */}
+        <form 
+          onSubmit={(e) => { e.preventDefault(); handleSendMessage(inputText); }}
+          className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg p-2.5 flex items-center gap-3 w-full"
+        >
+          <input
+            type="text"
+            placeholder="Describe your day profile, diet preferences, and target budget..."
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            disabled={loading}
+            className="flex-1 bg-transparent text-sm font-serif outline-none border-none text-[#1E2016] px-2 placeholder-[#7B8069]"
+          />
+          <Button 
+            type="submit"
+            disabled={loading || !inputText.trim()}
+            className="bg-[#1E2016] text-[#F8F3E1] hover:bg-[#7B8069] rounded-md w-9 h-9 flex items-center justify-center p-0"
+          >
+            <Send className="w-4 h-4" />
+          </Button>
+        </form>
       </main>
 
       {/* Checkout Dialog */}
       <Dialog open={orderModalOpen} onOpenChange={setOrderModalOpen}>
-        <DialogContent className="bg-[#F8F3E1] border border-[#7B8069] text-[#1E2016] max-w-[420px]">
+        <DialogContent className="bg-[#F8F3E1] border border-[#7B8069] text-[#1E2016] max-w-[420px] font-serif">
           <DialogHeader className="items-center text-center space-y-2">
             <div className="w-12 h-12 bg-[#B0361B]/10 text-[#B0361B] rounded-full flex items-center justify-center mb-1">
               <Check className="w-6 h-6 stroke-[3]" />
             </div>
             <DialogTitle className="text-xl font-display">Order Placed Successfully!</DialogTitle>
             <DialogDescription className="text-[#7B8069] text-xs font-serif">
-              Your order has been placed via Swiggy {activeTab === 'instamart' ? 'Instamart' : 'Food Delivery'}.
+              Your order has been placed via Swiggy {activeTabGlobal === 'instamart' ? 'Instamart' : 'Food Delivery'}.
             </DialogDescription>
           </DialogHeader>
 
@@ -777,13 +870,10 @@ export default function Home() {
             <Button
               onClick={() => {
                 setOrderModalOpen(false);
-                if (activeTab === 'instamart') {
-                  location.reload();
-                }
               }}
               className="w-full bg-[#B0361B] hover:bg-[#962d16] text-[#F8F3E1] font-sans-jp tracking-wider font-bold rounded-md py-2"
             >
-              {activeTab === 'instamart' ? 'Awesome!' : 'Track Delivery'}
+              Awesome
             </Button>
           </DialogFooter>
         </DialogContent>
