@@ -5,7 +5,9 @@ export async function GET(request: Request) {
   try {
     const host = request.headers.get('host') || 'localhost:3002';
     const protocol = host.includes('localhost') ? 'http' : 'https';
-    const redirectUri = `${protocol}://${host}/api/auth/callback`;
+
+    // Force redirectUri to be the whitelisted localhost address, even when accessed via a tunnel
+    const redirectUri = 'http://localhost:3002/api/auth/callback';
 
     // 1. Perform Dynamic Client Registration (RFC 7591)
     const registerRes = await fetch('https://mcp.swiggy.com/auth/register', {
@@ -48,7 +50,7 @@ export async function GET(request: Request) {
     authUrl.searchParams.append('state', state);
     authUrl.searchParams.append('scope', 'mcp:tools mcp:resources mcp:prompts');
 
-    // 4. Set cookies for code verifier, client id and state verification
+    // 4. Set cookies for verification on the current tunnel/local domain
     const response = NextResponse.redirect(authUrl.toString());
     response.cookies.set('pkce_verifier', codeVerifier, { httpOnly: true, secure: protocol === 'https', path: '/' });
     response.cookies.set('oauth_client_id', clientId, { httpOnly: true, secure: protocol === 'https', path: '/' });
