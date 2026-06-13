@@ -18,13 +18,11 @@ const PRODUCTS = [
   { id: 'p14', name: 'Rolled Oats (1kg)', price: 150, category: 'Breakfast Cereals', substituteId: null }
 ];
 
-// Mock Address database
 const ADDRESSES = [
   { id: 'addr_1', name: 'Home', address: 'Flat 402, Sunshine Apartments, Indiranagar, Bengaluru - 560038' },
   { id: 'addr_2', name: 'Office', address: 'Swiggy HQ, Devarabeesanahalli, Outer Ring Road, Bengaluru - 560103' }
 ];
 
-// In-memory Cart state
 let cart = {
   items: [] as Array<{ productId: string; quantity: number }>,
   addressId: 'addr_1'
@@ -70,6 +68,40 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { jsonrpc, method, params, id } = body;
 
+    // Check if the user has a real Swiggy Access Token in their cookies
+    const cookies = request.headers.get('cookie') || '';
+    const getCookie = (name: string) => {
+      const match = cookies.match(new RegExp('(^|;\\s*)' + name + '=([^;]*)'));
+      return match ? decodeURIComponent(match[2]) : null;
+    };
+    const accessToken = getCookie('swiggy_access_token');
+
+    // --- REAL MODE: Proxy to Swiggy MCP Server ---
+    if (accessToken) {
+      console.log(`Proxying ${method} to real Swiggy MCP server`);
+      try {
+        const swiggyRes = await fetch('https://mcp.swiggy.com/im', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify(body)
+        });
+
+        if (swiggyRes.ok) {
+          const swiggyData = await swiggyRes.json();
+          return NextResponse.json(swiggyData);
+        } else {
+          // If token expired, clear cookie and fall back
+          console.warn('Real Swiggy MCP Server returned error status:', swiggyRes.status);
+        }
+      } catch (err) {
+        console.error('Failed to query real Swiggy MCP server, falling back to mock mode:', err);
+      }
+    }
+
+    // --- MOCK MODE: Local Offline Fallback ---
     if (jsonrpc !== '2.0') {
       return NextResponse.json({ jsonrpc: '2.0', error: { code: -32600, message: 'Invalid Request' }, id }, { status: 400 });
     }
