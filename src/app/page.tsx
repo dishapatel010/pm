@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Clock, CheckCircle2, ShoppingCart, ArrowRight, RefreshCw, AlertTriangle, MapPin, Sparkles, Check, Key, LogOut } from 'lucide-react';
+import { Clock, CheckCircle2, ShoppingCart, ArrowRight, RefreshCw, AlertTriangle, MapPin, Sparkles, Check, Key, LogOut, Utensils, Info } from 'lucide-react';
 
 interface Meal {
   name: string;
@@ -99,7 +99,9 @@ const TIMELINE_CONFIGS: Record<string, Array<{ time: string; task: string }>> = 
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [activeTab, setActiveTab] = useState<'instamart' | 'food'>('instamart');
   
+  // App Configs
   const [dayProfile, setDayProfile] = useState('moderate');
   const [dietPreference, setDietPreference] = useState('balanced');
   const [budget, setBudget] = useState(400);
@@ -107,9 +109,21 @@ export default function Home() {
   const [planGenerated, setPlanGenerated] = useState(false);
   const [mealPlan, setMealPlan] = useState<Plan | null>(null);
   const [todoList, setTodoList] = useState<Array<{ time: string; task: string }>>([]);
-  const [cartDetails, setCartDetails] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  
+
+  // Instamart Cart State
+  const [cartDetails, setCartDetails] = useState<any>(null);
+
+  // Food Delivery state
+  const [restaurants, setRestaurants] = useState<any[]>([]);
+  const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
+  const [foodMenu, setFoodMenu] = useState<any[]>([]);
+  const [foodCartDetails, setFoodCartDetails] = useState<any>(null);
+  const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [trackingDetails, setTrackingDetails] = useState<any>(null);
+
+  // Checkout Dialog Modals
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [orderResult, setOrderResult] = useState<any>(null);
 
@@ -133,7 +147,7 @@ export default function Home() {
     }
   };
 
-  // Verify Auth Status on Load
+  // Verify Auth Status
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -156,7 +170,7 @@ export default function Home() {
         const res = await callMcp('get_addresses');
         if (res.success && res.addresses?.length > 0) {
           setAddress(res.addresses[0]);
-        } else if (res.success && res.addresses) {
+        } else if (res.success) {
           setAddress({ name: 'Home Address', address: 'Home, Bengaluru' });
         }
       };
@@ -172,41 +186,59 @@ export default function Home() {
     window.location.href = '/api/auth/logout';
   };
 
+  // Main Generator logic
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setTrackingDetails(null);
+    setAppliedCoupon(null);
+    setSelectedRestaurant(null);
     
     const plan = RECIPE_INGREDIENTS[dayProfile][dietPreference];
     setMealPlan(plan);
     setTodoList(TIMELINE_CONFIGS[dayProfile]);
 
-    const queries = Array.from(new Set([
-      ...plan.breakfast.searchQueries,
-      ...plan.lunch.searchQueries,
-      ...plan.dinner.searchQueries
-    ]));
+    if (activeTab === 'instamart') {
+      // Recipe Ingredients -> Instamart Search
+      const queries = Array.from(new Set([
+        ...plan.breakfast.searchQueries,
+        ...plan.lunch.searchQueries,
+        ...plan.dinner.searchQueries
+      ]));
 
-    const cartItems: Array<{ productId: string; quantity: number }> = [];
+      const cartItems: Array<{ productId: string; quantity: number }> = [];
 
-    for (const query of queries) {
-      const searchRes = await callMcp('search_products', { query });
-      if (searchRes.success && searchRes.products?.length > 0) {
-        cartItems.push({
-          productId: searchRes.products[0].id,
-          quantity: 1
-        });
+      for (const query of queries) {
+        const searchRes = await callMcp('search_products', { query });
+        if (searchRes.success && searchRes.products?.length > 0) {
+          cartItems.push({
+            productId: searchRes.products[0].id,
+            quantity: 1
+          });
+        }
       }
-    }
 
-    const cartRes = await callMcp('update_cart', { items: cartItems });
-    if (cartRes.success) {
-      setCartDetails(cartRes.cart);
+      const cartRes = await callMcp('update_cart', { items: cartItems });
+      if (cartRes.success) {
+        setCartDetails(cartRes.cart);
+      }
+    } else {
+      // Food Delivery flow
+      const restRes = await callMcp('search_restaurants', { query: 'healthy' });
+      if (restRes.success && restRes.restaurants?.length > 0) {
+        setRestaurants(restRes.restaurants);
+        // Automatically select the first open restaurant to build the menu
+        const chosen = restRes.restaurants[0];
+        setSelectedRestaurant(chosen);
+        await selectRestaurant(chosen.id);
+      }
     }
     
     setPlanGenerated(true);
     setLoading(false);
   };
 
+  // Instamart Substitutions
   const handleSubstitute = async () => {
     if (!cartDetails) return;
     setLoading(true);
@@ -225,23 +257,77 @@ export default function Home() {
     setLoading(false);
   };
 
-  const handleCheckout = async () => {
+  // Food Menu Selection
+  const selectRestaurant = async (restaurantId: string) => {
+    const menuRes = await callMcp('get_restaurant_menu', { restaurantId });
+    if (menuRes.success) {
+      setFoodMenu(menuRes.items || []);
+      
+      // Auto build food cart based on meals
+      const itemsToAdd = menuRes.items.slice(0, 2).map((item: any) => ({
+        itemId: item.id,
+        quantity: 1
+      }));
+
+      const cartRes = await callMcp('update_food_cart', { restaurantId, items: itemsToAdd });
+      if (cartRes.success) {
+        setFoodCartDetails(cartRes.cart);
+      }
+
+      // Fetch coupons
+      const coupRes = await callMcp('fetch_food_coupons');
+      if (coupRes.success) {
+        setAvailableCoupons(coupRes.coupons || []);
+      }
+    }
+  };
+
+  const handleApplyCoupon = async (code: string) => {
     setLoading(true);
-    const checkoutRes = await callMcp('checkout');
-    if (checkoutRes.success) {
-      setOrderResult(checkoutRes);
-      setOrderModalOpen(true);
-    } else {
-      alert(checkoutRes.error || 'Failed to place order.');
+    const cartRes = await callMcp('apply_food_coupon', { code });
+    if (cartRes.success) {
+      setFoodCartDetails(cartRes.cart);
+      setAppliedCoupon(code);
     }
     setLoading(false);
   };
 
-  const cartTotal = cartDetails?.billBreakdown?.grandTotal || 0;
-  const isOverBudget = cartTotal > budget;
-  const progressPercent = Math.min((cartTotal / budget) * 100, 100);
+  // Checkout flows
+  const handleCheckout = async () => {
+    setLoading(true);
+    if (activeTab === 'instamart') {
+      const checkoutRes = await callMcp('checkout');
+      if (checkoutRes.success) {
+        setOrderResult(checkoutRes);
+        setOrderModalOpen(true);
+      } else {
+        alert(checkoutRes.error || 'Failed to place Instamart order.');
+      }
+    } else {
+      const checkoutRes = await callMcp('place_food_order', { paymentMethod: 'COD' });
+      if (checkoutRes.success) {
+        setOrderResult(checkoutRes);
+        setOrderModalOpen(true);
+        // Trigger live tracking simulation
+        const trackRes = await callMcp('track_food_order', { orderId: checkoutRes.orderId });
+        if (trackRes.success) {
+          setTrackingDetails(trackRes);
+        }
+      } else {
+        alert(checkoutRes.error || 'Failed to place Food order.');
+      }
+    }
+    setLoading(false);
+  };
 
-  // Render Swiggy Login landing screen if not authenticated
+  const imCartTotal = cartDetails?.billBreakdown?.grandTotal || 0;
+  const imIsOverBudget = imCartTotal > budget;
+  const imProgressPercent = Math.min((imCartTotal / budget) * 100, 100);
+
+  const foodCartTotal = foodCartDetails?.billBreakdown?.grandTotal || 0;
+  const foodIsOverBudget = foodCartTotal > budget;
+  const foodProgressPercent = Math.min((foodCartTotal / budget) * 100, 100);
+
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center font-sans relative px-4">
@@ -255,13 +341,13 @@ export default function Home() {
               Swiggy MCP <br />
               <span className="bg-gradient-to-r from-orange-500 to-purple-400 bg-clip-text text-transparent">Smart Planner</span>
             </h1>
-            <p className="text-zinc-400 text-xs">Real-time meal planner integrating Swiggy Instamart via MCP</p>
+            <p className="text-zinc-400 text-xs">Dynamic meal planning dashboard utilizing Swiggy Food and Instamart servers.</p>
           </div>
 
           <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md text-left">
             <CardHeader>
-              <CardTitle className="text-xl font-bold text-zinc-100">Sign In to Swiggy</CardTitle>
-              <CardDescription className="text-zinc-400 text-xs">Authorize this application to access your Swiggy Instamart cart and addresses.</CardDescription>
+              <CardTitle className="text-xl font-bold text-zinc-100">Connect Swiggy Account</CardTitle>
+              <CardDescription className="text-zinc-400 text-xs">Sign in with your phone and OTP to connect the real Swiggy MCP servers.</CardDescription>
             </CardHeader>
             <CardContent>
               <Button onClick={handleOAuthLogin} className="w-full bg-orange-600 text-zinc-50 hover:bg-orange-500 font-bold py-4 flex items-center justify-center gap-2">
@@ -274,7 +360,6 @@ export default function Home() {
     );
   }
 
-  // Dashboard Interface
   return (
     <div className="min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-orange-500 selection:text-white pb-16">
       <header className="max-w-7xl mx-auto w-full px-6 py-8 border-b border-zinc-800/60 flex items-center justify-between z-10">
@@ -286,9 +371,20 @@ export default function Home() {
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-full text-xs font-medium text-zinc-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e]" />
-            Swiggy Connected
+          {/* Vertical Toggle */}
+          <div className="bg-zinc-900 p-1 border border-zinc-800 rounded-full flex text-xs font-semibold gap-1">
+            <button
+              onClick={() => { setActiveTab('instamart'); setPlanGenerated(false); }}
+              className={`px-4 py-1.5 rounded-full transition-all ${activeTab === 'instamart' ? 'bg-orange-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              Grocery Delivery
+            </button>
+            <button
+              onClick={() => { setActiveTab('food'); setPlanGenerated(false); }}
+              className={`px-4 py-1.5 rounded-full transition-all ${activeTab === 'food' ? 'bg-orange-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              Food Delivery
+            </button>
           </div>
 
           {address && (
@@ -310,7 +406,9 @@ export default function Home() {
         <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
           <CardHeader>
             <CardTitle className="text-lg font-bold text-zinc-100">Configure Plan</CardTitle>
-            <CardDescription className="text-zinc-400 text-xs">Customize meals based on schedule and budget constraints.</CardDescription>
+            <CardDescription className="text-zinc-400 text-xs">
+              {activeTab === 'instamart' ? 'Source fresh ingredients via Instamart.' : 'Order pre-cooked meals via Food Delivery.'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
@@ -320,9 +418,9 @@ export default function Home() {
                 onChange={(e) => setDayProfile(e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none text-zinc-100 focus:border-orange-500 transition-colors"
               >
-                <option value="busy">Busy (Quick 10m prep)</option>
-                <option value="moderate">Moderate (Normal prep)</option>
-                <option value="free">Free Weekend (Gourmet style)</option>
+                <option value="busy">Busy (Quick meals)</option>
+                <option value="moderate">Moderate (Standard prep)</option>
+                <option value="free">Free Weekend (Relaxed gourmet)</option>
               </select>
             </div>
 
@@ -359,7 +457,7 @@ export default function Home() {
               disabled={loading}
               className="w-full bg-orange-600 text-zinc-50 hover:bg-orange-500 font-bold transition-all disabled:opacity-50"
             >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Generate Meal Plan'}
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Generate Plan'}
             </Button>
           </CardFooter>
         </Card>
@@ -378,7 +476,7 @@ export default function Home() {
                   {(['breakfast', 'lunch', 'dinner'] as const).map((mealKey) => {
                     const meal = mealPlan[mealKey];
                     return (
-                      <div key={mealKey} className="p-4 bg-zinc-950/40 border border-zinc-800/50 rounded-xl hover:border-orange-500/20 transition-all flex flex-col gap-2">
+                      <div key={mealKey} className="p-4 bg-zinc-950/40 border border-zinc-800/50 rounded-xl flex flex-col gap-2">
                         <div className="flex items-center justify-between">
                           <Badge variant="outline" className={`text-[10px] font-bold uppercase ${
                             mealKey === 'breakfast' ? 'border-purple-500 text-purple-400 bg-purple-500/5' :
@@ -418,84 +516,213 @@ export default function Home() {
               </Card>
             </div>
 
-            {/* Swiggy Instamart Grocery Section */}
-            {cartDetails && (
-              <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-zinc-800/50 pb-4">
-                  <div>
-                    <CardTitle className="text-lg font-bold text-zinc-100">Swiggy Instamart Cart</CardTitle>
-                    <CardDescription className="text-zinc-400 text-xs">Ingredients synchronized via Swiggy MCP protocol</CardDescription>
-                  </div>
-                  <Badge className="bg-orange-500 text-zinc-950 font-black italic tracking-tighter text-sm px-3.5 py-1">
-                    instamart
-                  </Badge>
-                </CardHeader>
-                <CardContent className="py-6 space-y-6">
-                  {/* Item List */}
-                  <div className="divide-y divide-zinc-800/60">
-                    {cartDetails.items.map((item: any) => (
-                      <div key={item.id} className="py-3.5 flex items-center justify-between text-xs">
-                        <div className="space-y-1">
-                          <span className="font-semibold text-zinc-100 block">{item.name} (x{item.quantity})</span>
-                          {item.substituteId && (
-                            <span className="text-[10px] text-orange-400 font-medium flex items-center gap-1">
-                              <Sparkles className="w-3 h-3" /> Can replace with: {item.substituteText}
-                            </span>
-                          )}
+            {/* Vertical Content: Groceries vs Food Delivery */}
+            {activeTab === 'instamart' ? (
+              /* INSTAMART SECTION */
+              cartDetails && (
+                <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
+                  <CardHeader className="flex flex-row items-center justify-between border-b border-zinc-800/50 pb-4">
+                    <div>
+                      <CardTitle className="text-lg font-bold text-zinc-100">Swiggy Instamart Cart</CardTitle>
+                      <CardDescription className="text-zinc-400 text-xs">Ingredients synchronized via Swiggy MCP protocol</CardDescription>
+                    </div>
+                    <Badge className="bg-orange-500 text-zinc-950 font-black italic tracking-tighter text-sm px-3.5 py-1">
+                      instamart
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="py-6 space-y-6">
+                    <div className="divide-y divide-zinc-800/60">
+                      {cartDetails.items.map((item: any) => (
+                        <div key={item.id} className="py-3.5 flex items-center justify-between text-xs">
+                          <div className="space-y-1">
+                            <span className="font-semibold text-zinc-100 block">{item.name} (x{item.quantity})</span>
+                            {item.substituteId && (
+                              <span className="text-[10px] text-orange-400 font-medium flex items-center gap-1">
+                                <Sparkles className="w-3 h-3" /> Can replace with: {item.substituteText}
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-bold text-zinc-200 text-sm">₹{item.totalCost}</span>
                         </div>
-                        <span className="font-bold text-zinc-200 text-sm">₹{item.totalCost}</span>
+                      ))}
+                    </div>
+
+                    {/* Budget Widget */}
+                    <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-xl space-y-3">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-zinc-400 font-medium">Cart Total: <strong className="text-zinc-200">₹{imCartTotal}</strong></span>
+                        <span className="text-zinc-400 font-medium">Daily Budget: <strong className="text-zinc-200">₹{budget}</strong></span>
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Budget feasibility logic widget */}
-                  <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-xl space-y-3">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-zinc-400 font-medium">Cart Total: <strong className="text-zinc-200">₹{cartTotal}</strong></span>
-                      <span className="text-zinc-400 font-medium">Daily Budget: <strong className="text-zinc-200">₹{budget}</strong></span>
+                      <Progress value={imProgressPercent} className={`h-2 ${imIsOverBudget ? 'bg-red-950' : 'bg-green-950'}`} />
+                      
+                      <div className="flex items-center gap-2 mt-1">
+                        {imIsOverBudget ? (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                            <span className="text-xs text-red-400 font-semibold leading-none">
+                              Budget exceeded by ₹{imCartTotal - budget}! Try substitutions.
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                            <span className="text-xs text-green-400 font-semibold leading-none">
+                              Meal plan is fully feasible within budget.
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <Progress value={progressPercent} className={`h-2 ${isOverBudget ? 'bg-red-950' : 'bg-green-950'}`} />
-                    
-                    <div className="flex items-center gap-2 mt-1">
-                      {isOverBudget ? (
-                        <>
-                          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                          <span className="text-xs text-red-400 font-semibold leading-none">
-                            Budget exceeded by ₹{cartTotal - budget}! Try substitutions.
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                          <span className="text-xs text-green-400 font-semibold leading-none">
-                            Meal plan is fully feasible within budget.
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
+                  </CardContent>
 
-                <CardFooter className="flex gap-4 border-t border-zinc-800/50 pt-6">
-                  {isOverBudget && cartDetails.items.some((i: any) => i.substituteId) && (
+                  <CardFooter className="flex gap-4 border-t border-zinc-800/50 pt-6">
+                    {imIsOverBudget && cartDetails.items.some((i: any) => i.substituteId) && (
+                      <Button
+                        onClick={handleSubstitute}
+                        disabled={loading}
+                        variant="outline"
+                        className="flex-1 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 font-bold"
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" /> Substitute Items
+                      </Button>
+                    )}
                     <Button
-                      onClick={handleSubstitute}
+                      onClick={handleCheckout}
                       disabled={loading}
-                      variant="outline"
-                      className="flex-1 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 font-bold"
+                      className="flex-1 bg-orange-600 hover:bg-orange-500 text-zinc-50 font-bold"
                     >
-                      <Sparkles className="w-4 h-4 mr-2" /> Substitute Items
+                      <ShoppingCart className="w-4 h-4 mr-2" /> Place Instamart Order
                     </Button>
-                  )}
-                  <Button
-                    onClick={handleCheckout}
-                    disabled={loading}
-                    className="flex-1 bg-orange-600 hover:bg-orange-500 text-zinc-50 font-bold"
-                  >
-                    <ShoppingCart className="w-4 h-4 mr-2" /> Place Swiggy Order
-                  </Button>
-                </CardFooter>
-              </Card>
+                  </CardFooter>
+                </Card>
+              )
+            ) : (
+              /* FOOD DELIVERY SECTION */
+              foodCartDetails && (
+                <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
+                  <CardHeader className="flex flex-row items-center justify-between border-b border-zinc-800/50 pb-4">
+                    <div>
+                      <CardTitle className="text-lg font-bold text-zinc-100">Swiggy Food Order (COD Only)</CardTitle>
+                      <CardDescription className="text-zinc-400 text-xs">
+                        Ordering meals from <strong className="text-zinc-200">{selectedRestaurant?.name || 'Selected Restaurant'}</strong>
+                      </CardDescription>
+                    </div>
+                    <Badge className="bg-orange-500 text-zinc-950 font-black italic tracking-tighter text-sm px-3.5 py-1">
+                      food
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="py-6 space-y-6">
+                    {/* Restaurant details */}
+                    <div className="flex gap-4 items-center justify-between bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/60">
+                      <div className="space-y-1">
+                        <span className="text-xs text-zinc-400 font-semibold">Restaurant Catalog</span>
+                        <div className="flex gap-2 items-center">
+                          {restaurants.map(r => (
+                            <button
+                              key={r.id}
+                              onClick={() => { setSelectedRestaurant(r); selectRestaurant(r.id); }}
+                              className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${selectedRestaurant?.id === r.id ? 'bg-orange-600/10 border-orange-500 text-orange-400 font-bold' : 'border-zinc-800 text-zinc-400'}`}
+                            >
+                              {r.name} ({r.rating}★)
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Food Items list */}
+                    <div className="divide-y divide-zinc-800/60">
+                      {foodCartDetails.items.map((item: any) => (
+                        <div key={item.id} className="py-3 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-semibold text-zinc-100 block">{item.name} (x{item.quantity})</span>
+                          </div>
+                          <span className="font-bold text-zinc-200 text-sm">₹{item.totalCost}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Coupons and offers */}
+                    {availableCoupons.length > 0 && (
+                      <div className="bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/60 space-y-2.5">
+                        <span className="text-[10px] uppercase font-bold text-purple-400 block tracking-wider">Available Coupons</span>
+                        {availableCoupons.map(coupon => (
+                          <div key={coupon.code} className="flex justify-between items-center text-xs">
+                            <div>
+                              <Badge className="bg-purple-900/50 border border-purple-800 text-purple-300 font-bold text-[10px] px-2 py-0.5">
+                                {coupon.code}
+                              </Badge>
+                              <span className="text-[11px] text-zinc-400 ml-2">{coupon.description}</span>
+                            </div>
+                            <Button
+                              onClick={() => handleApplyCoupon(coupon.code)}
+                              disabled={appliedCoupon === coupon.code}
+                              size="sm"
+                              variant="outline"
+                              className="h-7 border-zinc-700 text-xs px-3"
+                            >
+                              {appliedCoupon === coupon.code ? 'Applied' : 'Apply'}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Budget Widget */}
+                    <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-xl space-y-3">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-zinc-400 font-medium">Cart Total: <strong className="text-zinc-200">₹{foodCartTotal}</strong></span>
+                        <span className="text-zinc-400 font-medium">Daily Budget: <strong className="text-zinc-200">₹{budget}</strong></span>
+                      </div>
+                      <Progress value={foodProgressPercent} className={`h-2 ${foodIsOverBudget ? 'bg-red-950' : 'bg-green-950'}`} />
+                      
+                      <div className="flex items-center gap-2 mt-1">
+                        {foodIsOverBudget ? (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                            <span className="text-xs text-red-400 font-semibold leading-none">
+                              Cart exceeds target daily budget by ₹{foodCartTotal - budget}!
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                            <span className="text-xs text-green-400 font-semibold leading-none">
+                              Food order fits your daily budget constraints.
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+
+                  <CardFooter className="flex flex-col gap-4 border-t border-zinc-800/50 pt-6">
+                    <Button
+                      onClick={handleCheckout}
+                      disabled={loading || foodCartTotal > 1000}
+                      className="w-full bg-orange-600 hover:bg-orange-500 text-zinc-50 font-bold"
+                    >
+                      <ShoppingCart className="w-4 h-4 mr-2" /> Order Cooked Meals (COD)
+                    </Button>
+                    {foodCartTotal > 1000 && (
+                      <span className="text-[10px] text-red-400 flex items-center gap-1">
+                        <Info className="w-3 h-3" /> Swiggy v1 cap: Orders must not exceed ₹1000.
+                      </span>
+                    )}
+
+                    {/* Live delivery tracking widget */}
+                    {trackingDetails && (
+                      <div className="w-full bg-orange-950/20 border border-orange-900/40 p-4 rounded-xl mt-2 flex items-center justify-between text-xs animate-pulse">
+                        <div className="space-y-1">
+                          <span className="text-orange-400 font-bold">Delivery Status: {trackingDetails.status}</span>
+                          <p className="text-zinc-400 text-[11px]">Rider {trackingDetails.deliveryPartner} is on the way.</p>
+                        </div>
+                        <span className="font-extrabold text-orange-400">{trackingDetails.eta}</span>
+                      </div>
+                    )}
+                  </CardFooter>
+                </Card>
+              )
             )}
           </div>
         )}
@@ -510,7 +737,7 @@ export default function Home() {
             </div>
             <DialogTitle className="text-xl font-bold">Order Placed Successfully!</DialogTitle>
             <DialogDescription className="text-zinc-400 text-xs">
-              Your grocery items have been ordered via Swiggy Instamart.
+              Your order has been placed via Swiggy {activeTab === 'instamart' ? 'Instamart' : 'Food Delivery'}.
             </DialogDescription>
           </DialogHeader>
 
@@ -553,11 +780,13 @@ export default function Home() {
             <Button
               onClick={() => {
                 setOrderModalOpen(false);
-                location.reload();
+                if (activeTab === 'instamart') {
+                  location.reload();
+                }
               }}
               className="w-full bg-orange-600 hover:bg-orange-500 font-bold"
             >
-              Awesome!
+              {activeTab === 'instamart' ? 'Awesome!' : 'Track Delivery'}
             </Button>
           </DialogFooter>
         </DialogContent>
