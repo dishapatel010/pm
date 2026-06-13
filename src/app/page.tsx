@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Clock, CheckCircle2, ShoppingCart, ArrowRight, RefreshCw, AlertTriangle, MapPin, Sparkles, Check, Key, LogOut, Utensils, Info } from 'lucide-react';
+import { Clock, CheckCircle2, ShoppingCart, ArrowRight, RefreshCw, AlertTriangle, MapPin, Sparkles, Check, Key, LogOut, Info } from 'lucide-react';
 
 interface Meal {
   name: string;
@@ -37,7 +37,7 @@ const RECIPE_INGREDIENTS: Record<string, Record<string, Plan>> = {
     vegetarian: {
       breakfast: { name: 'Banana Oats Bowl', desc: 'Quick rolled oats topped with sliced bananas and milk.', time: '5 mins', cost: 95, searchQueries: ['oats', 'banana', 'milk'] },
       lunch: { name: 'Quick Tofu Spinach Rice', desc: 'Tofu sautéed with spinach and served over white rice.', time: '10 mins', cost: 130, searchQueries: ['tofu', 'spinach', 'white rice'] },
-      dinner: { name: 'Quick Paneer Toast', desc: 'Lightly seasoned paneer slices on toasted bread (or with rice).', time: '10 mins', cost: 125, searchQueries: ['paneer'] }
+      dinner: { name: 'Quick Paneer Toast', desc: 'Lightly seasoned paneer slices on toasted bread.', time: '10 mins', cost: 125, searchQueries: ['paneer'] }
     }
   },
   moderate: {
@@ -86,10 +86,10 @@ const TIMELINE_CONFIGS: Record<string, Array<{ time: string; task: string }>> = 
     { time: '07:30 AM', task: 'Sauté breakfast ingredients. Spend 12 mins cooking fresh.' },
     { time: '11:45 AM', task: 'Mid-day check: Ensure lunch ingredients are ready for your 20-min break.' },
     { time: '01:00 PM', task: 'Lunch: Assemble Rice Bowl. Savor home-cooked balanced diet.' },
-    { time: '07:30 PM', task: 'Dinner Prep: Light cooking with calming music.' }
+    { time: '07:30 PM', task: 'Dinner Prep: Sauté ingredients gently.' }
   ],
   free: [
-    { time: '08:30 AM', task: 'Enjoy relaxed breakfast preparation. Mash avocado, froth almond milk.' },
+    { time: '08:30 AM', task: 'Enjoy relaxed breakfast preparation. Savor the process.' },
     { time: '11:30 AM', task: 'Slow-cook lunch. Let spices simmer to bring out maximum gourmet flavor.' },
     { time: '01:30 PM', task: 'Indulge in a hearty weekend lunch.' },
     { time: '06:00 PM', task: 'Pre-dinner prep: Cut fresh paneer/tofu cubes, wash spinach leaves.' },
@@ -171,7 +171,7 @@ export default function Home() {
         if (res.success && res.addresses?.length > 0) {
           setAddress(res.addresses[0]);
         } else if (res.success) {
-          setAddress({ name: 'Home Address', address: 'Home, Bengaluru' });
+          setAddress({ name: 'Home Address', address: 'Indiranagar, Bengaluru' });
         }
       };
       fetchAddress();
@@ -199,7 +199,6 @@ export default function Home() {
     setTodoList(TIMELINE_CONFIGS[dayProfile]);
 
     if (activeTab === 'instamart') {
-      // Recipe Ingredients -> Instamart Search
       const queries = Array.from(new Set([
         ...plan.breakfast.searchQueries,
         ...plan.lunch.searchQueries,
@@ -223,11 +222,9 @@ export default function Home() {
         setCartDetails(cartRes.cart);
       }
     } else {
-      // Food Delivery flow
       const restRes = await callMcp('search_restaurants', { query: 'healthy' });
       if (restRes.success && restRes.restaurants?.length > 0) {
         setRestaurants(restRes.restaurants);
-        // Automatically select the first open restaurant to build the menu
         const chosen = restRes.restaurants[0];
         setSelectedRestaurant(chosen);
         await selectRestaurant(chosen.id);
@@ -263,7 +260,6 @@ export default function Home() {
     if (menuRes.success) {
       setFoodMenu(menuRes.items || []);
       
-      // Auto build food cart based on meals
       const itemsToAdd = menuRes.items.slice(0, 2).map((item: any) => ({
         itemId: item.id,
         quantity: 1
@@ -274,7 +270,6 @@ export default function Home() {
         setFoodCartDetails(cartRes.cart);
       }
 
-      // Fetch coupons
       const coupRes = await callMcp('fetch_food_coupons');
       if (coupRes.success) {
         setAvailableCoupons(coupRes.coupons || []);
@@ -308,7 +303,6 @@ export default function Home() {
       if (checkoutRes.success) {
         setOrderResult(checkoutRes);
         setOrderModalOpen(true);
-        // Trigger live tracking simulation
         const trackRes = await callMcp('track_food_order', { orderId: checkoutRes.orderId });
         if (trackRes.success) {
           setTrackingDetails(trackRes);
@@ -328,29 +322,31 @@ export default function Home() {
   const foodIsOverBudget = foodCartTotal > budget;
   const foodProgressPercent = Math.min((foodCartTotal / budget) * 100, 100);
 
+  // Landing view (Not logged in)
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center font-sans relative px-4">
-        <div className="absolute top-1/4 left-1/4 w-[350px] h-[350px] bg-orange-600/10 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-[350px] h-[350px] bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" />
-
-        <div className="w-full max-w-[420px] z-10 text-center space-y-6">
+      <div className="min-h-screen w-full bg-[#F0EBDA] text-[#1E2016] flex flex-col items-center justify-center font-serif relative px-4">
+        <div className="w-full max-w-[420px] text-center space-y-8">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-6 h-6 bg-orange-500 rounded-full shadow-[0_0_20px_#f97316]" />
-            <h1 className="text-3xl font-extrabold tracking-tight">
+            <h1 className="text-4xl font-display font-light tracking-tight">
               Swiggy MCP <br />
-              <span className="bg-gradient-to-r from-orange-500 to-purple-400 bg-clip-text text-transparent">Smart Planner</span>
+              <span className="text-[#B0361B] italic font-semibold">Tea House Planner</span>
             </h1>
-            <p className="text-zinc-400 text-xs">Dynamic meal planning dashboard utilizing Swiggy Food and Instamart servers.</p>
+            <p className="font-sans-jp tracking-[0.2em] uppercase text-[0.72rem] text-[#7B8069]">
+              Standardized Culinary Management
+            </p>
           </div>
 
-          <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md text-left">
-            <CardHeader>
-              <CardTitle className="text-xl font-bold text-zinc-100">Connect Swiggy Account</CardTitle>
-              <CardDescription className="text-zinc-400 text-xs">Sign in with your phone and OTP to connect the real Swiggy MCP servers.</CardDescription>
+          <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none text-left p-6">
+            <CardHeader className="p-0 mb-4">
+              <CardTitle className="text-xl font-display text-[#1E2016]">Connect Swiggy Account</CardTitle>
+              <CardDescription className="text-[#7B8069] text-xs font-serif mt-1">
+                Authorize this application to access your Swiggy Instamart and Food delivery APIs.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Button onClick={handleOAuthLogin} className="w-full bg-orange-600 text-zinc-50 hover:bg-orange-500 font-bold py-4 flex items-center justify-center gap-2">
+            <CardContent className="p-0">
+              {/* PRIMARY ACTION BUTTON IN CLAY RED */}
+              <Button onClick={handleOAuthLogin} className="w-full bg-[#B0361B] text-[#F8F3E1] hover:bg-[#962d16] font-sans-jp tracking-[0.1em] font-bold py-3 flex items-center justify-center gap-2 rounded-md">
                 <Key className="w-4 h-4" /> Connect Swiggy Account (OAuth)
               </Button>
             </CardContent>
@@ -360,63 +356,63 @@ export default function Home() {
     );
   }
 
+  // Dashboard Interface (Logged In)
   return (
-    <div className="min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-orange-500 selection:text-white pb-16">
-      <header className="max-w-7xl mx-auto w-full px-6 py-8 border-b border-zinc-800/60 flex items-center justify-between z-10">
+    <div className="min-h-screen w-full bg-[#F0EBDA] text-[#1E2016] flex flex-col font-serif pb-16">
+      <header className="max-w-7xl mx-auto w-full px-6 py-8 border-b border-[#7B8069]/40 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-4 h-4 bg-orange-500 rounded-full shadow-[0_0_15px_#f97316] animate-pulse" />
-          <h1 className="text-2xl font-bold tracking-tight">
-            Swiggy MCP <span className="bg-gradient-to-r from-orange-500 to-purple-400 bg-clip-text text-transparent">Smart Planner</span>
+          <h1 className="text-2xl font-display font-light">
+            Swiggy MCP <span className="text-[#B0361B] italic">Tea House Planner</span>
           </h1>
         </div>
         
         <div className="flex items-center gap-4">
           {/* Vertical Toggle */}
-          <div className="bg-zinc-900 p-1 border border-zinc-800 rounded-full flex text-xs font-semibold gap-1">
+          <div className="bg-[#F8F3E1] p-1 border border-[#7B8069] rounded-md flex text-xs gap-1">
             <button
               onClick={() => { setActiveTab('instamart'); setPlanGenerated(false); }}
-              className={`px-4 py-1.5 rounded-full transition-all ${activeTab === 'instamart' ? 'bg-orange-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-4 py-1.5 rounded-sm transition-all font-sans-jp tracking-[0.1em] uppercase text-[10px] ${activeTab === 'instamart' ? 'bg-[#1E2016] text-[#F8F3E1] font-bold' : 'text-[#7B8069] hover:text-[#1E2016]'}`}
             >
               Grocery Delivery
             </button>
             <button
               onClick={() => { setActiveTab('food'); setPlanGenerated(false); }}
-              className={`px-4 py-1.5 rounded-full transition-all ${activeTab === 'food' ? 'bg-orange-500 text-zinc-950 font-bold' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-4 py-1.5 rounded-sm transition-all font-sans-jp tracking-[0.1em] uppercase text-[10px] ${activeTab === 'food' ? 'bg-[#1E2016] text-[#F8F3E1] font-bold' : 'text-[#7B8069] hover:text-[#1E2016]'}`}
             >
               Food Delivery
             </button>
           </div>
 
           {address && (
-            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-full text-xs font-medium text-zinc-300 max-w-[200px] truncate">
-              <MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+            <div className="flex items-center gap-2 bg-[#F8F3E1] border border-[#7B8069] px-4 py-2 rounded-md text-xs text-[#1E2016] max-w-[200px] truncate">
+              <MapPin className="w-3.5 h-3.5 text-[#B0361B] shrink-0" />
               <span className="truncate">{address.name}</span>
             </div>
           )}
 
-          <button onClick={handleLogout} className="bg-zinc-900 border border-zinc-800 hover:border-red-900 hover:text-red-400 p-2.5 rounded-full transition-colors text-zinc-400" title="Logout">
+          <button onClick={handleLogout} className="bg-[#F8F3E1] border border-[#7B8069] hover:border-[#B0361B] hover:text-[#B0361B] p-2 rounded-md transition-colors text-[#7B8069]" title="Logout">
             <LogOut className="w-4 h-4" />
           </button>
         </div>
       </header>
 
       {/* Main Grid */}
-      <main className="max-w-7xl mx-auto w-full px-6 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-8 mt-10 items-start z-10">
+      <main className="max-w-7xl mx-auto w-full px-6 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-8 mt-10 items-start">
         {/* Left Form Panel */}
-        <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold text-zinc-100">Configure Plan</CardTitle>
-            <CardDescription className="text-zinc-400 text-xs">
+        <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
+          <CardHeader className="p-0 mb-4">
+            <CardTitle className="text-lg font-display text-[#1E2016]">Configure Plan</CardTitle>
+            <CardDescription className="text-[#7B8069] text-xs font-serif mt-1">
               {activeTab === 'instamart' ? 'Source fresh ingredients via Instamart.' : 'Order pre-cooked meals via Food Delivery.'}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="p-0 space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-400">Day Schedule</label>
+              <label className="font-sans-jp tracking-[0.2em] uppercase text-[10px] text-[#7B8069]">Day Schedule</label>
               <select
                 value={dayProfile}
                 onChange={(e) => setDayProfile(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none text-zinc-100 focus:border-orange-500 transition-colors"
+                className="w-full bg-[#F0EBDA] border border-[#7B8069] rounded-md px-3 py-2 text-sm outline-none text-[#1E2016] focus:border-[#B0361B] transition-colors font-serif"
               >
                 <option value="busy">Busy (Quick meals)</option>
                 <option value="moderate">Moderate (Standard prep)</option>
@@ -425,11 +421,11 @@ export default function Home() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-400">Diet Preference</label>
+              <label className="font-sans-jp tracking-[0.2em] uppercase text-[10px] text-[#7B8069]">Diet Preference</label>
               <select
                 value={dietPreference}
                 onChange={(e) => setDietPreference(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none text-zinc-100 focus:border-orange-500 transition-colors"
+                className="w-full bg-[#F0EBDA] border border-[#7B8069] rounded-md px-3 py-2 text-sm outline-none text-[#1E2016] focus:border-[#B0361B] transition-colors font-serif"
               >
                 <option value="balanced">Balanced Diet</option>
                 <option value="high-protein">High Protein</option>
@@ -438,24 +434,27 @@ export default function Home() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-400">Daily Budget (INR)</label>
+              <label className="font-sans-jp tracking-[0.2em] uppercase text-[10px] text-[#7B8069]">Daily Budget (INR)</label>
               <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 text-sm font-semibold">₹</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7B8069] text-sm font-semibold">₹</span>
                 <input
                   type="number"
                   value={budget}
                   onChange={(e) => setBudget(Number(e.target.value))}
                   min={150}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-7 pr-3 py-2.5 text-sm outline-none text-zinc-100 focus:border-orange-500 transition-colors"
+                  className="w-full bg-[#F0EBDA] border border-[#7B8069] rounded-md pl-7 pr-3 py-2 text-sm outline-none text-[#1E2016] focus:border-[#B0361B] transition-colors font-serif"
                 />
               </div>
             </div>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="p-0 mt-6">
+            {/* If plan is NOT generated yet, this is the sole Tertiary action button */}
             <Button
               onClick={handleGenerate}
               disabled={loading}
-              className="w-full bg-orange-600 text-zinc-50 hover:bg-orange-500 font-bold transition-all disabled:opacity-50"
+              className={`w-full text-[#F8F3E1] font-sans-jp tracking-[0.1em] font-bold py-2.5 rounded-md transition-all ${
+                !planGenerated ? 'bg-[#B0361B] hover:bg-[#962d16]' : 'bg-[#7B8069] hover:bg-[#1E2016]'
+              }`}
             >
               {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Generate Plan'}
             </Button>
@@ -464,33 +463,29 @@ export default function Home() {
 
         {/* Results Area */}
         {planGenerated && mealPlan && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="space-y-8 animate-in fade-in duration-300">
             {/* Meal Plan & Todo Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Daily Meals */}
-              <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold text-zinc-100">Daily Meals</CardTitle>
+              <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
+                <CardHeader className="p-0 mb-4">
+                  <CardTitle className="text-lg font-display text-[#1E2016]">Daily Meals</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="p-0 space-y-4">
                   {(['breakfast', 'lunch', 'dinner'] as const).map((mealKey) => {
                     const meal = mealPlan[mealKey];
                     return (
-                      <div key={mealKey} className="p-4 bg-zinc-950/40 border border-zinc-800/50 rounded-xl flex flex-col gap-2">
-                        <div className="flex items-center justify-between">
-                          <Badge variant="outline" className={`text-[10px] font-bold uppercase ${
-                            mealKey === 'breakfast' ? 'border-purple-500 text-purple-400 bg-purple-500/5' :
-                            mealKey === 'lunch' ? 'border-amber-500 text-amber-400 bg-amber-500/5' :
-                            'border-emerald-500 text-emerald-400 bg-emerald-500/5'
-                          }`}>
+                      <div key={mealKey} className="p-4 bg-[#F0EBDA]/50 border border-[#7B8069]/30 rounded-md flex flex-col gap-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <Badge variant="outline" className={`text-[9px] font-sans-jp tracking-wider uppercase border-[#7B8069] text-[#7B8069] bg-transparent`}>
                             {mealKey}
                           </Badge>
-                          <span className="text-[11px] text-zinc-400 flex items-center gap-1 font-medium">
+                          <span className="text-[11px] text-[#7B8069] flex items-center gap-1">
                             <Clock className="w-3 h-3" /> {meal.time}
                           </span>
                         </div>
-                        <h4 className="font-semibold text-zinc-100 text-sm">{meal.name}</h4>
-                        <p className="text-xs text-zinc-400 leading-normal">{meal.desc}</p>
+                        <h4 className="font-semibold text-[#1E2016] text-sm font-serif">{meal.name}</h4>
+                        <p className="text-xs text-[#7B8069] leading-relaxed font-serif">{meal.desc}</p>
                       </div>
                     );
                   })}
@@ -498,17 +493,17 @@ export default function Home() {
               </Card>
 
               {/* Cooking Todo */}
-              <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold text-zinc-100">Cooking Timeline</CardTitle>
+              <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
+                <CardHeader className="p-0 mb-4">
+                  <CardTitle className="text-lg font-display text-[#1E2016]">Cooking Timeline</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="relative pl-6 border-l border-zinc-800 space-y-6">
+                <CardContent className="p-0">
+                  <div className="relative pl-6 border-l border-[#7B8069]/50 space-y-6">
                     {todoList.map((item, index) => (
                       <div key={index} className="relative">
-                        <div className="absolute -left-[31px] top-1 w-2.5 h-2.5 rounded-full bg-orange-500 border border-zinc-950 shadow-[0_0_8px_#f97316]" />
-                        <span className="text-[11px] font-bold text-orange-500 block mb-0.5">{item.time}</span>
-                        <p className="text-xs text-zinc-300 leading-normal">{item.task}</p>
+                        <div className="absolute -left-[31px] top-1 w-2 h-2 rounded-full bg-[#B0361B]" />
+                        <span className="font-sans-jp tracking-[0.1em] uppercase text-[10px] text-[#B0361B] block mb-0.5">{item.time}</span>
+                        <p className="text-xs text-[#1E2016] leading-relaxed font-serif">{item.task}</p>
                       </div>
                     ))}
                   </div>
@@ -520,53 +515,53 @@ export default function Home() {
             {activeTab === 'instamart' ? (
               /* INSTAMART SECTION */
               cartDetails && (
-                <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
-                  <CardHeader className="flex flex-row items-center justify-between border-b border-zinc-800/50 pb-4">
+                <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
+                  <CardHeader className="flex flex-row items-center justify-between border-b border-[#7B8069]/40 pb-4 p-0 mb-4">
                     <div>
-                      <CardTitle className="text-lg font-bold text-zinc-100">Swiggy Instamart Cart</CardTitle>
-                      <CardDescription className="text-zinc-400 text-xs">Ingredients synchronized via Swiggy MCP protocol</CardDescription>
+                      <CardTitle className="text-lg font-display text-[#1E2016]">Swiggy Instamart Cart</CardTitle>
+                      <CardDescription className="text-[#7B8069] text-xs font-serif mt-1">Ingredients synchronized via Swiggy MCP protocol</CardDescription>
                     </div>
-                    <Badge className="bg-orange-500 text-zinc-950 font-black italic tracking-tighter text-sm px-3.5 py-1">
+                    <Badge className="bg-[#1E2016] text-[#F8F3E1] font-sans-jp tracking-wider uppercase text-[10px] px-3 py-1 rounded-sm">
                       instamart
                     </Badge>
                   </CardHeader>
-                  <CardContent className="py-6 space-y-6">
-                    <div className="divide-y divide-zinc-800/60">
+                  <CardContent className="p-0 space-y-6">
+                    <div className="divide-y divide-[#7B8069]/20">
                       {cartDetails.items.map((item: any) => (
-                        <div key={item.id} className="py-3.5 flex items-center justify-between text-xs">
+                        <div key={item.id} className="py-3 flex items-center justify-between text-xs font-serif">
                           <div className="space-y-1">
-                            <span className="font-semibold text-zinc-100 block">{item.name} (x{item.quantity})</span>
+                            <span className="font-semibold text-[#1E2016] block">{item.name} (x{item.quantity})</span>
                             {item.substituteId && (
-                              <span className="text-[10px] text-orange-400 font-medium flex items-center gap-1">
+                              <span className="text-[10px] text-[#B0361B] font-sans-jp tracking-wider flex items-center gap-1">
                                 <Sparkles className="w-3 h-3" /> Can replace with: {item.substituteText}
                               </span>
                             )}
                           </div>
-                          <span className="font-bold text-zinc-200 text-sm">₹{item.totalCost}</span>
+                          <span className="font-bold text-[#1E2016] text-sm">₹{item.totalCost}</span>
                         </div>
                       ))}
                     </div>
 
                     {/* Budget Widget */}
-                    <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-xl space-y-3">
+                    <div className="bg-[#F0EBDA]/60 border border-[#7B8069]/50 p-4 rounded-md space-y-3">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-400 font-medium">Cart Total: <strong className="text-zinc-200">₹{imCartTotal}</strong></span>
-                        <span className="text-zinc-400 font-medium">Daily Budget: <strong className="text-zinc-200">₹{budget}</strong></span>
+                        <span className="text-[#7B8069]">Cart Total: <strong className="text-[#1E2016]">₹{imCartTotal}</strong></span>
+                        <span className="text-[#7B8069]">Daily Budget: <strong className="text-[#1E2016]">₹{budget}</strong></span>
                       </div>
-                      <Progress value={imProgressPercent} className={`h-2 ${imIsOverBudget ? 'bg-red-950' : 'bg-green-950'}`} />
+                      <Progress value={imProgressPercent} className="h-1 bg-[#F0EBDA]" />
                       
                       <div className="flex items-center gap-2 mt-1">
                         {imIsOverBudget ? (
                           <>
-                            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                            <span className="text-xs text-red-400 font-semibold leading-none">
+                            <AlertTriangle className="w-4 h-4 text-[#B0361B] shrink-0" />
+                            <span className="text-xs text-[#B0361B] font-semibold leading-none">
                               Budget exceeded by ₹{imCartTotal - budget}! Try substitutions.
                             </span>
                           </>
                         ) : (
                           <>
-                            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                            <span className="text-xs text-green-400 font-semibold leading-none">
+                            <CheckCircle2 className="w-4 h-4 text-[#7B8069] shrink-0" />
+                            <span className="text-xs text-[#7B8069] font-semibold leading-none">
                               Meal plan is fully feasible within budget.
                             </span>
                           </>
@@ -575,21 +570,22 @@ export default function Home() {
                     </div>
                   </CardContent>
 
-                  <CardFooter className="flex gap-4 border-t border-zinc-800/50 pt-6">
+                  <CardFooter className="flex gap-4 border-t border-[#7B8069]/40 pt-6 p-0 mt-6">
                     {imIsOverBudget && cartDetails.items.some((i: any) => i.substituteId) && (
                       <Button
                         onClick={handleSubstitute}
                         disabled={loading}
                         variant="outline"
-                        className="flex-1 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 font-bold"
+                        className="flex-1 border-[#7B8069] text-[#1E2016] hover:bg-[#F0EBDA] font-sans-jp tracking-wider rounded-md text-xs py-2"
                       >
                         <Sparkles className="w-4 h-4 mr-2" /> Substitute Items
                       </Button>
                     )}
+                    {/* PRIMARY DRIVER BUTTON IN CLAY RED */}
                     <Button
                       onClick={handleCheckout}
                       disabled={loading}
-                      className="flex-1 bg-orange-600 hover:bg-orange-500 text-zinc-50 font-bold"
+                      className="flex-1 bg-[#B0361B] hover:bg-[#962d16] text-[#F8F3E1] font-sans-jp tracking-wider font-bold rounded-md py-2 text-xs"
                     >
                       <ShoppingCart className="w-4 h-4 mr-2" /> Place Instamart Order
                     </Button>
@@ -599,29 +595,29 @@ export default function Home() {
             ) : (
               /* FOOD DELIVERY SECTION */
               foodCartDetails && (
-                <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
-                  <CardHeader className="flex flex-row items-center justify-between border-b border-zinc-800/50 pb-4">
+                <Card className="bg-[#F8F3E1] border border-[#7B8069] rounded-lg shadow-none p-6">
+                  <CardHeader className="flex flex-row items-center justify-between border-b border-[#7B8069]/40 pb-4 p-0 mb-4">
                     <div>
-                      <CardTitle className="text-lg font-bold text-zinc-100">Swiggy Food Order (COD Only)</CardTitle>
-                      <CardDescription className="text-zinc-400 text-xs">
-                        Ordering meals from <strong className="text-zinc-200">{selectedRestaurant?.name || 'Selected Restaurant'}</strong>
+                      <CardTitle className="text-lg font-display text-[#1E2016]">Swiggy Food Order (COD Only)</CardTitle>
+                      <CardDescription className="text-[#7B8069] text-xs font-serif mt-1">
+                        Ordering meals from <strong className="text-[#1E2016]">{selectedRestaurant?.name || 'Selected Restaurant'}</strong>
                       </CardDescription>
                     </div>
-                    <Badge className="bg-orange-500 text-zinc-950 font-black italic tracking-tighter text-sm px-3.5 py-1">
+                    <Badge className="bg-[#1E2016] text-[#F8F3E1] font-sans-jp tracking-wider uppercase text-[10px] px-3 py-1 rounded-sm">
                       food
                     </Badge>
                   </CardHeader>
-                  <CardContent className="py-6 space-y-6">
-                    {/* Restaurant details */}
-                    <div className="flex gap-4 items-center justify-between bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/60">
-                      <div className="space-y-1">
-                        <span className="text-xs text-zinc-400 font-semibold">Restaurant Catalog</span>
-                        <div className="flex gap-2 items-center">
+                  <CardContent className="p-0 space-y-6">
+                    {/* Restaurant list */}
+                    <div className="flex gap-4 items-center justify-between bg-[#F0EBDA]/45 p-4 rounded-md border border-[#7B8069]/30">
+                      <div className="space-y-1.5 w-full">
+                        <span className="text-[10px] uppercase font-sans-jp tracking-wider text-[#7B8069] font-semibold block">Restaurant Catalog</span>
+                        <div className="flex gap-2 items-center flex-wrap">
                           {restaurants.map(r => (
                             <button
                               key={r.id}
                               onClick={() => { setSelectedRestaurant(r); selectRestaurant(r.id); }}
-                              className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${selectedRestaurant?.id === r.id ? 'bg-orange-600/10 border-orange-500 text-orange-400 font-bold' : 'border-zinc-800 text-zinc-400'}`}
+                              className={`text-xs px-3 py-1.5 rounded-md border transition-all ${selectedRestaurant?.id === r.id ? 'bg-[#B0361B]/10 border-[#B0361B] text-[#B0361B] font-bold' : 'border-[#7B8069]/40 text-[#7B8069]'}`}
                             >
                               {r.name} ({r.rating}★)
                             </button>
@@ -631,35 +627,35 @@ export default function Home() {
                     </div>
 
                     {/* Food Items list */}
-                    <div className="divide-y divide-zinc-800/60">
+                    <div className="divide-y divide-[#7B8069]/20">
                       {foodCartDetails.items.map((item: any) => (
-                        <div key={item.id} className="py-3 flex items-center justify-between text-xs">
+                        <div key={item.id} className="py-3 flex items-center justify-between text-xs font-serif">
                           <div>
-                            <span className="font-semibold text-zinc-100 block">{item.name} (x{item.quantity})</span>
+                            <span className="font-semibold text-[#1E2016] block">{item.name} (x{item.quantity})</span>
                           </div>
-                          <span className="font-bold text-zinc-200 text-sm">₹{item.totalCost}</span>
+                          <span className="font-bold text-[#1E2016] text-sm">₹{item.totalCost}</span>
                         </div>
                       ))}
                     </div>
 
                     {/* Coupons and offers */}
                     {availableCoupons.length > 0 && (
-                      <div className="bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/60 space-y-2.5">
-                        <span className="text-[10px] uppercase font-bold text-purple-400 block tracking-wider">Available Coupons</span>
+                      <div className="bg-[#F0EBDA]/40 p-4 rounded-md border border-[#7B8069]/30 space-y-2.5">
+                        <span className="text-[10px] uppercase font-sans-jp tracking-wider text-[#B0361B] block">Available Coupons</span>
                         {availableCoupons.map(coupon => (
                           <div key={coupon.code} className="flex justify-between items-center text-xs">
                             <div>
-                              <Badge className="bg-purple-900/50 border border-purple-800 text-purple-300 font-bold text-[10px] px-2 py-0.5">
+                              <Badge className="bg-transparent border border-[#B0361B] text-[#B0361B] font-bold text-[10px] px-2 py-0.5 rounded-sm">
                                 {coupon.code}
                               </Badge>
-                              <span className="text-[11px] text-zinc-400 ml-2">{coupon.description}</span>
+                              <span className="text-[11px] text-[#7B8069] ml-2">{coupon.description}</span>
                             </div>
                             <Button
                               onClick={() => handleApplyCoupon(coupon.code)}
                               disabled={appliedCoupon === coupon.code}
                               size="sm"
                               variant="outline"
-                              className="h-7 border-zinc-700 text-xs px-3"
+                              className="h-7 border-[#7B8069] text-xs px-3 rounded-md"
                             >
                               {appliedCoupon === coupon.code ? 'Applied' : 'Apply'}
                             </Button>
@@ -669,25 +665,25 @@ export default function Home() {
                     )}
 
                     {/* Budget Widget */}
-                    <div className="bg-zinc-950/60 border border-zinc-800/80 p-4 rounded-xl space-y-3">
+                    <div className="bg-[#F0EBDA]/60 border border-[#7B8069]/50 p-4 rounded-md space-y-3">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-400 font-medium">Cart Total: <strong className="text-zinc-200">₹{foodCartTotal}</strong></span>
-                        <span className="text-zinc-400 font-medium">Daily Budget: <strong className="text-zinc-200">₹{budget}</strong></span>
+                        <span className="text-[#7B8069]">Cart Total: <strong className="text-[#1E2016]">₹{foodCartTotal}</strong></span>
+                        <span className="text-[#7B8069]">Daily Budget: <strong className="text-[#1E2016]">₹{budget}</strong></span>
                       </div>
-                      <Progress value={foodProgressPercent} className={`h-2 ${foodIsOverBudget ? 'bg-red-950' : 'bg-green-950'}`} />
+                      <Progress value={foodProgressPercent} className="h-1 bg-[#F0EBDA]" />
                       
                       <div className="flex items-center gap-2 mt-1">
                         {foodIsOverBudget ? (
                           <>
-                            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                            <span className="text-xs text-red-400 font-semibold leading-none">
+                            <AlertTriangle className="w-4 h-4 text-[#B0361B] shrink-0" />
+                            <span className="text-xs text-[#B0361B] font-semibold leading-none">
                               Cart exceeds target daily budget by ₹{foodCartTotal - budget}!
                             </span>
                           </>
                         ) : (
                           <>
-                            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                            <span className="text-xs text-green-400 font-semibold leading-none">
+                            <CheckCircle2 className="w-4 h-4 text-[#7B8069] shrink-0" />
+                            <span className="text-xs text-[#7B8069] font-semibold leading-none">
                               Food order fits your daily budget constraints.
                             </span>
                           </>
@@ -696,28 +692,29 @@ export default function Home() {
                     </div>
                   </CardContent>
 
-                  <CardFooter className="flex flex-col gap-4 border-t border-zinc-800/50 pt-6">
+                  <CardFooter className="flex flex-col gap-4 border-t border-[#7B8069]/40 pt-6 p-0 mt-6">
+                    {/* PRIMARY ACTION DRIVER IN CLAY RED */}
                     <Button
                       onClick={handleCheckout}
                       disabled={loading || foodCartTotal > 1000}
-                      className="w-full bg-orange-600 hover:bg-orange-500 text-zinc-50 font-bold"
+                      className="w-full bg-[#B0361B] hover:bg-[#962d16] text-[#F8F3E1] font-sans-jp tracking-wider font-bold rounded-md py-3 text-xs"
                     >
                       <ShoppingCart className="w-4 h-4 mr-2" /> Order Cooked Meals (COD)
                     </Button>
                     {foodCartTotal > 1000 && (
-                      <span className="text-[10px] text-red-400 flex items-center gap-1">
+                      <span className="text-[10px] text-[#B0361B] flex items-center gap-1 font-serif">
                         <Info className="w-3 h-3" /> Swiggy v1 cap: Orders must not exceed ₹1000.
                       </span>
                     )}
 
-                    {/* Live delivery tracking widget */}
+                    {/* Rider tracking */}
                     {trackingDetails && (
-                      <div className="w-full bg-orange-950/20 border border-orange-900/40 p-4 rounded-xl mt-2 flex items-center justify-between text-xs animate-pulse">
+                      <div className="w-full bg-[#B0361B]/5 border border-[#B0361B]/30 p-4 rounded-md mt-2 flex items-center justify-between text-xs font-serif">
                         <div className="space-y-1">
-                          <span className="text-orange-400 font-bold">Delivery Status: {trackingDetails.status}</span>
-                          <p className="text-zinc-400 text-[11px]">Rider {trackingDetails.deliveryPartner} is on the way.</p>
+                          <span className="text-[#B0361B] font-bold">Delivery Status: {trackingDetails.status}</span>
+                          <p className="text-[#7B8069] text-[11px]">Rider {trackingDetails.deliveryPartner} is on the way.</p>
                         </div>
-                        <span className="font-extrabold text-orange-400">{trackingDetails.eta}</span>
+                        <span className="font-extrabold text-[#B0361B]">{trackingDetails.eta}</span>
                       </div>
                     )}
                   </CardFooter>
@@ -730,45 +727,45 @@ export default function Home() {
 
       {/* Checkout Dialog */}
       <Dialog open={orderModalOpen} onOpenChange={setOrderModalOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100 max-w-[420px]">
+        <DialogContent className="bg-[#F8F3E1] border border-[#7B8069] text-[#1E2016] max-w-[420px]">
           <DialogHeader className="items-center text-center space-y-2">
-            <div className="w-12 h-12 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mb-1">
+            <div className="w-12 h-12 bg-[#B0361B]/10 text-[#B0361B] rounded-full flex items-center justify-center mb-1">
               <Check className="w-6 h-6 stroke-[3]" />
             </div>
-            <DialogTitle className="text-xl font-bold">Order Placed Successfully!</DialogTitle>
-            <DialogDescription className="text-zinc-400 text-xs">
+            <DialogTitle className="text-xl font-display">Order Placed Successfully!</DialogTitle>
+            <DialogDescription className="text-[#7B8069] text-xs font-serif">
               Your order has been placed via Swiggy {activeTab === 'instamart' ? 'Instamart' : 'Food Delivery'}.
             </DialogDescription>
           </DialogHeader>
 
           {orderResult && (
-            <div className="space-y-4 my-2">
-              <div className="text-center bg-zinc-950 p-2 border border-zinc-800 rounded-lg text-[11px] text-zinc-400">
-                Order ID: <strong className="text-zinc-100">{orderResult.orderId}</strong>
+            <div className="space-y-4 my-2 text-left">
+              <div className="text-center bg-[#F0EBDA] p-2 border border-[#7B8069]/40 rounded-md text-[11px] text-[#7B8069]">
+                Order ID: <strong className="text-[#1E2016]">{orderResult.orderId}</strong>
               </div>
 
-              <div className="bg-zinc-950/40 border border-zinc-850 p-4 rounded-xl text-xs space-y-2.5">
-                <span className="text-[10px] uppercase font-bold text-orange-500 block tracking-wider">Delivery Details</span>
-                <p className="text-zinc-300 leading-normal">{orderResult.deliveredTo || 'Home Address'}</p>
+              <div className="bg-[#F0EBDA]/40 border border-[#7B8069]/45 p-4 rounded-md text-xs space-y-2">
+                <span className="text-[10px] uppercase font-sans-jp tracking-wider text-[#B0361B] block">Delivery Details</span>
+                <p className="text-[#1E2016] leading-relaxed font-serif">{orderResult.deliveredTo || 'Home Address'}</p>
               </div>
 
-              <div className="bg-zinc-950/40 border border-zinc-850 p-4 rounded-xl text-xs space-y-2">
-                <span className="text-[10px] uppercase font-bold text-orange-500 block tracking-wider mb-1">Bill Summary</span>
-                <div className="flex justify-between text-zinc-400">
+              <div className="bg-[#F0EBDA]/40 border border-[#7B8069]/45 p-4 rounded-md text-xs space-y-2">
+                <span className="text-[10px] uppercase font-sans-jp tracking-wider text-[#B0361B] block mb-1">Bill Summary</span>
+                <div className="flex justify-between text-[#7B8069] font-serif">
                   <span>Items Subtotal</span>
                   <span>₹{orderResult.bill.itemTotal}</span>
                 </div>
-                <div className="flex justify-between text-zinc-400">
+                <div className="flex justify-between text-[#7B8069] font-serif">
                   <span>Delivery & Platform Fees</span>
                   <span>₹{orderResult.bill.deliveryFee + orderResult.bill.platformFee}</span>
                 </div>
                 {orderResult.bill.discount > 0 && (
-                  <div className="flex justify-between text-emerald-400">
+                  <div className="flex justify-between text-[#B0361B] font-serif">
                     <span>Discounts Applied</span>
                     <span>-₹{orderResult.bill.discount}</span>
                   </div>
                 )}
-                <div className="flex justify-between border-t border-zinc-800 pt-2 font-bold text-green-400 text-sm">
+                <div className="flex justify-between border-t border-[#7B8069]/40 pt-2 font-bold text-[#B0361B] text-sm">
                   <span>Grand Total Paid</span>
                   <span>₹{orderResult.bill.grandTotal}</span>
                 </div>
@@ -784,7 +781,7 @@ export default function Home() {
                   location.reload();
                 }
               }}
-              className="w-full bg-orange-600 hover:bg-orange-500 font-bold"
+              className="w-full bg-[#B0361B] hover:bg-[#962d16] text-[#F8F3E1] font-sans-jp tracking-wider font-bold rounded-md py-2"
             >
               {activeTab === 'instamart' ? 'Awesome!' : 'Track Delivery'}
             </Button>
