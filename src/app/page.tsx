@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Clock, CheckCircle2, ShoppingCart, ArrowRight, RefreshCw, AlertTriangle, MapPin, Sparkles, Check } from 'lucide-react';
+import { Clock, CheckCircle2, ShoppingCart, ArrowRight, RefreshCw, AlertTriangle, MapPin, Sparkles, Check, Phone, Lock, LogOut } from 'lucide-react';
 
 interface Meal {
   name: string;
@@ -98,6 +98,14 @@ const TIMELINE_CONFIGS: Record<string, Array<{ time: string; task: string }>> = 
 };
 
 export default function Home() {
+  // Authentication State
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userSession, setUserSession] = useState<string | null>(null);
+
+  // App configurations State
   const [dayProfile, setDayProfile] = useState('moderate');
   const [dietPreference, setDietPreference] = useState('balanced');
   const [budget, setBudget] = useState(400);
@@ -133,16 +141,56 @@ export default function Home() {
     }
   };
 
-  // Fetch Saved Address on load
+  // Restore session from localStorage if exists
   useEffect(() => {
-    const fetchAddress = async () => {
-      const res = await callMcp('get_addresses');
-      if (res.success && res.addresses.length > 0) {
-        setAddress(res.addresses[0]);
-      }
-    };
-    fetchAddress();
+    const savedPhone = localStorage.getItem('swiggy_mcp_phone');
+    if (savedPhone) {
+      setIsLoggedIn(true);
+      setUserSession(savedPhone);
+    }
   }, []);
+
+  // Fetch Saved Address when logged in
+  useEffect(() => {
+    if (isLoggedIn) {
+      const fetchAddress = async () => {
+        const res = await callMcp('get_addresses');
+        if (res.success && res.addresses.length > 0) {
+          setAddress(res.addresses[0]);
+        }
+      };
+      fetchAddress();
+    }
+  }, [isLoggedIn]);
+
+  // Auth Handlers
+  const handleSendOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phoneNumber || phoneNumber.length < 10) {
+      alert('Please enter a valid 10-digit phone number');
+      return;
+    }
+    setOtpSent(true);
+  };
+
+  const handleVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otpCode === '123456' || otpCode.length === 6) {
+      localStorage.setItem('swiggy_mcp_phone', phoneNumber);
+      setUserSession(phoneNumber);
+      setIsLoggedIn(true);
+    } else {
+      alert('Invalid OTP. Use 123456 or any 6-digit number to proceed.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('swiggy_mcp_phone');
+    setUserSession(null);
+    setIsLoggedIn(false);
+    setPlanGenerated(false);
+    setCartDetails(null);
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,7 +200,6 @@ export default function Home() {
     setMealPlan(plan);
     setTodoList(TIMELINE_CONFIGS[dayProfile]);
 
-    // Gather ingredients and search via Swiggy MCP
     const queries = Array.from(new Set([
       ...plan.breakfast.searchQueries,
       ...plan.lunch.searchQueries,
@@ -171,7 +218,6 @@ export default function Home() {
       }
     }
 
-    // Update cart in MCP
     const cartRes = await callMcp('update_cart', { items: cartItems });
     if (cartRes.success) {
       setCartDetails(cartRes.cart);
@@ -215,8 +261,87 @@ export default function Home() {
   const isOverBudget = cartTotal > budget;
   const progressPercent = Math.min((cartTotal / budget) * 100, 100);
 
+  // Render Login flow if not logged in
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center font-sans relative px-4">
+        {/* Background Accents */}
+        <div className="absolute top-1/4 left-1/4 w-[350px] h-[350px] bg-orange-600/10 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-[350px] h-[350px] bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" />
+
+        <div className="w-full max-w-[420px] z-10">
+          <div className="flex flex-col items-center mb-8 gap-3">
+            <div className="w-6 h-6 bg-orange-500 rounded-full shadow-[0_0_20px_#f97316]" />
+            <h1 className="text-3xl font-extrabold tracking-tight text-center">
+              Swiggy MCP <br />
+              <span className="bg-gradient-to-r from-orange-500 to-purple-400 bg-clip-text text-transparent">Smart Planner</span>
+            </h1>
+            <p className="text-zinc-400 text-xs text-center">Connect your account via Swiggy OAuth login simulation</p>
+          </div>
+
+          <Card className="bg-zinc-900/60 border-zinc-800/80 backdrop-blur-md">
+            <CardHeader>
+              <CardTitle className="text-xl font-bold text-zinc-100">Sign In</CardTitle>
+              <CardDescription className="text-zinc-400 text-xs">Login with your phone number to access Swiggy Instamart tools.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!otpSent ? (
+                <form onSubmit={handleSendOtp} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-zinc-400">Phone Number</label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                      <input
+                        type="tel"
+                        placeholder="Enter 10-digit number"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').substring(0, 10))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-10 pr-3 py-3 text-sm outline-none text-zinc-100 focus:border-orange-500 transition-colors"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <Button type="submit" className="w-full bg-orange-600 text-zinc-50 hover:bg-orange-500 font-bold py-3.5">
+                    Send OTP Authorization
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-zinc-400">Enter OTP (6-digits)</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                      <input
+                        type="text"
+                        placeholder="Default: 123456"
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').substring(0, 6))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-10 pr-3 py-3 text-sm outline-none text-zinc-100 focus:border-orange-500 transition-colors"
+                        required
+                      />
+                    </div>
+                    <span className="text-[10px] text-zinc-500 block">OTP has been simulated. Type any 6-digit number to bypass.</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <Button type="button" onClick={() => setOtpSent(false)} variant="outline" className="flex-1 border-zinc-800 hover:bg-zinc-800/30 text-zinc-300 font-semibold">
+                      Back
+                    </Button>
+                    <Button type="submit" className="flex-1 bg-orange-600 text-zinc-50 hover:bg-orange-500 font-bold">
+                      Verify & Connect
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Dashboard Interface (Logged In)
   return (
-    <div className="min-height-screen w-full bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-orange-500 selection:text-white pb-16">
+    <div className="min-h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-orange-500 selection:text-white pb-16">
       {/* Background Decor */}
       <div className="absolute top-0 left-0 w-[400px] h-[400px] bg-orange-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none" />
@@ -229,17 +354,26 @@ export default function Home() {
             Swiggy MCP <span className="bg-gradient-to-r from-orange-500 to-purple-400 bg-clip-text text-transparent">Smart Planner</span>
           </h1>
         </div>
-        {address ? (
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-full text-xs font-medium text-zinc-300">
-            <MapPin className="w-3.5 h-3.5 text-orange-500" />
-            Local MCP Connected: <span className="text-orange-400 font-semibold">{address.name}</span>
+        
+        <div className="flex items-center gap-4">
+          {address ? (
+            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-full text-xs font-medium text-zinc-300">
+              <MapPin className="w-3.5 h-3.5 text-orange-500" />
+              Address: <span className="text-orange-400 font-semibold">{address.name}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-full text-xs font-medium text-zinc-550">
+              Fetching Swiggy location...
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-full text-xs">
+            <span className="text-zinc-400 font-medium">+91 {userSession}</span>
+            <button onClick={handleLogout} className="text-zinc-500 hover:text-red-400 transition-colors" title="Logout">
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
-        ) : (
-          <div className="flex items-center gap-2 bg-red-950/40 border border-red-900/50 px-4 py-2 rounded-full text-xs font-medium text-red-400">
-            <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-            Connecting to Local MCP...
-          </div>
-        )}
+        </div>
       </header>
 
       {/* Main Grid */}
